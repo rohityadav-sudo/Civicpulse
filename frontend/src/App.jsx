@@ -1,0 +1,628 @@
+import React, { useMemo, useState } from 'react';
+import { Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { formatDistanceToNow } from 'date-fns';
+import {
+  AlertTriangle,
+  ArrowLeft,
+  BarChart3,
+  CheckCircle2,
+  CircleUserRound,
+  Clock3,
+  Eye,
+  Flame,
+  ListFilter,
+  Loader2,
+  LocateFixed,
+  LogOut,
+  MapPin,
+  Megaphone,
+  Plus,
+  Search,
+  Send,
+  ShieldCheck,
+  Siren,
+  ThumbsUp,
+} from 'lucide-react';
+import toast from 'react-hot-toast';
+import api from './utils/api';
+import { useAuthStore } from './store/authStore';
+
+const CATEGORIES = [
+  ['POTHOLE', 'Pothole'],
+  ['GARBAGE', 'Garbage'],
+  ['WATER', 'Water'],
+  ['STREETLIGHT', 'Streetlight'],
+  ['SAFETY', 'Safety'],
+  ['TREE', 'Tree'],
+  ['OTHER', 'Other'],
+];
+
+const CATEGORY_LABELS = Object.fromEntries(CATEGORIES);
+
+const STATUS_LABELS = {
+  OPEN: 'Open',
+  ASSIGNED: 'Assigned',
+  IN_PROGRESS: 'In progress',
+  ESCALATED_TO_MLA: 'Escalated to MLA',
+  ESCALATED_TO_MP: 'Escalated to MP',
+  RESOLVED: 'Resolved',
+  CLOSED: 'Closed',
+};
+
+const DEFAULT_LOCATION = {
+  lat: 19.076,
+  lng: 72.8777,
+  location_label: 'Mumbai',
+};
+
+function AppShell({ children }) {
+  const { isAuthenticated, user, logout } = useAuthStore();
+  const navigate = useNavigate();
+
+  return (
+    <div className="app-shell">
+      <header className="topbar">
+        <Link to="/" className="brand">
+          <img src="/icon.png" alt="" className="brand-mark" />
+          <span>
+            <strong>CivicPulse</strong>
+            <small>Mumbai civic reporting</small>
+          </span>
+        </Link>
+
+        <nav className="topnav" aria-label="Primary">
+          <Link to="/">Feed</Link>
+          <Link to="/raise">Raise issue</Link>
+        </nav>
+
+        <div className="top-actions">
+          {isAuthenticated ? (
+            <>
+              <span className="user-chip">
+                <CircleUserRound size={16} />
+                {user?.name || 'Citizen'}
+              </span>
+              <button className="icon-button" type="button" onClick={() => { logout(); navigate('/'); }} aria-label="Sign out">
+                <LogOut size={18} />
+              </button>
+            </>
+          ) : (
+            <Link className="button secondary" to="/login">Sign in</Link>
+          )}
+          <Link className="button primary" to="/raise">
+            <Plus size={17} />
+            Raise issue
+          </Link>
+        </div>
+      </header>
+
+      <main>{children}</main>
+    </div>
+  );
+}
+
+function StatStrip() {
+  const { data, isLoading } = useQuery({
+    queryKey: ['feed-stats'],
+    queryFn: () => api.get('/api/feed/stats').then((r) => r.data),
+  });
+
+  const stats = [
+    { label: 'Total issues', value: data?.total_issues ?? 0, icon: BarChart3 },
+    { label: 'Resolved', value: data?.resolved_issues ?? 0, icon: CheckCircle2 },
+    { label: 'Resolution rate', value: `${data?.resolution_rate ?? 0}%`, icon: ShieldCheck },
+    { label: 'Active reps', value: data?.active_reps ?? 0, icon: Megaphone },
+  ];
+
+  return (
+    <section className="stats-grid" aria-label="CivicPulse statistics">
+      {stats.map(({ label, value, icon: Icon }) => (
+        <div className="stat-card" key={label}>
+          <Icon size={18} />
+          <span>{isLoading ? '...' : value}</span>
+          <small>{label}</small>
+        </div>
+      ))}
+    </section>
+  );
+}
+
+function DashboardPage() {
+  const [search, setSearch] = useState('');
+  const [category, setCategory] = useState('');
+  const [sort, setSort] = useState('newest');
+
+  const { data, isLoading, refetch } = useQuery({
+    queryKey: ['issues', category, sort],
+    queryFn: () => api.get('/api/feed/home', {
+      params: {
+        category: category || undefined,
+        sort,
+        limit: 40,
+      },
+    }).then((r) => r.data),
+  });
+
+  const issues = useMemo(() => {
+    const value = search.trim().toLowerCase();
+    return (data?.issues || []).filter((issue) => {
+      if (!value) return true;
+      return [issue.title, issue.description, issue.location_label, issue.wards?.name]
+        .filter(Boolean)
+        .some((field) => field.toLowerCase().includes(value));
+    });
+  }, [data?.issues, search]);
+
+  return (
+    <AppShell>
+      <section className="workspace">
+        <div className="workspace-header">
+          <div>
+            <p className="eyebrow">Live civic feed</p>
+            <h1>Report and track local civic issues</h1>
+          </div>
+          <Link className="button primary large" to="/raise">
+            <Siren size={18} />
+            Raise an issue
+          </Link>
+        </div>
+
+        <StatStrip />
+
+        <div className="feed-toolbar">
+          <label className="search-box">
+            <Search size={18} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search by issue, ward, or location"
+            />
+          </label>
+
+          <label className="select-field">
+            <ListFilter size={17} />
+            <select value={category} onChange={(event) => setCategory(event.target.value)}>
+              <option value="">All categories</option>
+              {CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+            </select>
+          </label>
+
+          <label className="select-field">
+            <Flame size={17} />
+            <select value={sort} onChange={(event) => setSort(event.target.value)}>
+              <option value="newest">Newest</option>
+              <option value="trending">Trending</option>
+              <option value="upvotes">Most upvoted</option>
+              <option value="escalated">Escalated</option>
+            </select>
+          </label>
+        </div>
+
+        <section className="issue-grid" aria-label="Issue feed">
+          {isLoading ? (
+            Array.from({ length: 6 }).map((_, index) => <div className="issue-card loading-card" key={index} />)
+          ) : issues.length ? (
+            issues.map((issue) => <IssueCard key={issue.id} issue={issue} onRefresh={refetch} />)
+          ) : (
+            <EmptyState />
+          )}
+        </section>
+      </section>
+    </AppShell>
+  );
+}
+
+function IssueCard({ issue, onRefresh }) {
+  const { isAuthenticated } = useAuthStore();
+  const status = STATUS_LABELS[issue.status] || issue.status || 'Open';
+  const created = issue.created_at ? formatDistanceToNow(new Date(issue.created_at), { addSuffix: true }) : '';
+  const isEscalated = Boolean(issue.escalated_at);
+
+  const upvote = useMutation({
+    mutationFn: () => api.post(`/api/issues/${issue.id}/upvote`),
+    onSuccess: () => onRefresh?.(),
+    onError: (error) => toast.error(error.response?.data?.error || 'Unable to upvote'),
+  });
+
+  return (
+    <article className={`issue-card ${isEscalated ? 'is-escalated' : ''}`}>
+      <div className="issue-meta">
+        <span className="pill category">{CATEGORY_LABELS[issue.category] || 'Other'}</span>
+        <span className="pill status">{status}</span>
+      </div>
+
+      <h2>{issue.title}</h2>
+      <p>{issue.description || 'No description added yet.'}</p>
+
+      <div className="issue-location">
+        <MapPin size={15} />
+        <span>{issue.wards?.name || issue.location_label || 'Mumbai'}</span>
+      </div>
+
+      <div className="issue-footer">
+        <button
+          type="button"
+          className="text-button"
+          onClick={() => {
+            if (!isAuthenticated) {
+              toast.error('Sign in to upvote');
+              return;
+            }
+            upvote.mutate();
+          }}
+          disabled={upvote.isPending}
+        >
+          <ThumbsUp size={16} />
+          {issue.upvote_count || 0}
+        </button>
+        <span className="quiet">
+          <Clock3 size={15} />
+          {created}
+        </span>
+        <Link to={`/issues/${issue.id}`} className="text-button">
+          <Eye size={16} />
+          View
+        </Link>
+      </div>
+    </article>
+  );
+}
+
+function EmptyState() {
+  return (
+    <div className="empty-state">
+      <Siren size={30} />
+      <h2>No issues match this view</h2>
+      <p>Raise the first report for your area or clear the filters.</p>
+      <Link className="button primary" to="/raise">Raise issue</Link>
+    </div>
+  );
+}
+
+function AuthPanel({ compact = false }) {
+  const navigate = useNavigate();
+  const { login } = useAuthStore();
+  const [mode, setMode] = useState('register');
+  const [form, setForm] = useState({ name: '', email: '', password: '' });
+
+  const auth = useMutation({
+    mutationFn: async () => {
+      const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login';
+      const payload = mode === 'register'
+        ? form
+        : { email: form.email, password: form.password };
+      const { data } = await api.post(endpoint, payload);
+      return data;
+    },
+    onSuccess: (data) => {
+      login(data.user, data.token);
+      toast.success(mode === 'register' ? 'Account created' : 'Signed in');
+      navigate('/raise');
+    },
+    onError: (error) => toast.error(error.response?.data?.error || 'Authentication failed'),
+  });
+
+  return (
+    <section className={`auth-panel ${compact ? 'compact' : ''}`}>
+      <div className="auth-tabs" role="tablist">
+        <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>
+          Register
+        </button>
+        <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>
+          Sign in
+        </button>
+      </div>
+
+      <form onSubmit={(event) => { event.preventDefault(); auth.mutate(); }} className="auth-form">
+        {mode === 'register' && (
+          <label>
+            Full name
+            <input
+              required
+              value={form.name}
+              onChange={(event) => setForm((state) => ({ ...state, name: event.target.value }))}
+              placeholder="Your name"
+            />
+          </label>
+        )}
+        <label>
+          Email
+          <input
+            required
+            type="email"
+            value={form.email}
+            onChange={(event) => setForm((state) => ({ ...state, email: event.target.value }))}
+            placeholder="you@example.com"
+          />
+        </label>
+        <label>
+          Password
+          <input
+            required
+            minLength={8}
+            type="password"
+            value={form.password}
+            onChange={(event) => setForm((state) => ({ ...state, password: event.target.value }))}
+            placeholder="Minimum 8 characters"
+          />
+        </label>
+        <button type="submit" className="button primary" disabled={auth.isPending}>
+          {auth.isPending ? <Loader2 size={17} className="spin" /> : <ShieldCheck size={17} />}
+          {mode === 'register' ? 'Create account' : 'Sign in'}
+        </button>
+      </form>
+    </section>
+  );
+}
+
+function LoginPage() {
+  const { isAuthenticated } = useAuthStore();
+  if (isAuthenticated) return <Navigate to="/raise" replace />;
+
+  return (
+    <AppShell>
+      <section className="auth-page">
+        <div>
+          <p className="eyebrow">Citizen access</p>
+          <h1>Create an account to raise and track issues</h1>
+          <p className="lede">
+            Your reports are connected to a real backend and can be followed from the feed after submission.
+          </p>
+        </div>
+        <AuthPanel />
+      </section>
+    </AppShell>
+  );
+}
+
+function RaiseIssuePage() {
+  const { isAuthenticated } = useAuthStore();
+  const queryClient = useQueryClient();
+  const navigate = useNavigate();
+  const [form, setForm] = useState({
+    title: '',
+    description: '',
+    category: 'POTHOLE',
+    location_label: '',
+    is_anonymous: false,
+  });
+  const [location, setLocation] = useState(DEFAULT_LOCATION);
+  const [locating, setLocating] = useState(false);
+
+  const submitIssue = useMutation({
+    mutationFn: async () => {
+      const fd = new FormData();
+      fd.append('title', form.title.trim());
+      fd.append('description', form.description.trim());
+      fd.append('category', form.category);
+      fd.append('location_label', form.location_label.trim() || location.location_label || 'Mumbai');
+      fd.append('is_anonymous', String(form.is_anonymous));
+      fd.append('lat', String(location.lat));
+      fd.append('lng', String(location.lng));
+      fd.append('source', 'TYPED');
+      const { data } = await api.post('/api/issues', fd);
+      return data;
+    },
+    onSuccess: (data) => {
+      toast.success('Issue raised');
+      queryClient.invalidateQueries({ queryKey: ['issues'] });
+      navigate(`/issues/${data.issue.id}`);
+    },
+    onError: (error) => toast.error(error.response?.data?.error || 'Issue submission failed'),
+  });
+
+  const getLocation = () => {
+    if (!navigator.geolocation) {
+      toast.error('Location is not available in this browser');
+      return;
+    }
+    setLocating(true);
+    navigator.geolocation.getCurrentPosition(
+      (position) => {
+        setLocation({
+          lat: position.coords.latitude,
+          lng: position.coords.longitude,
+          location_label: form.location_label || 'Current location',
+        });
+        setLocating(false);
+        toast.success('Location added');
+      },
+      () => {
+        setLocating(false);
+        toast.error('Location permission was not granted');
+      },
+      { enableHighAccuracy: true, timeout: 10000 },
+    );
+  };
+
+  return (
+    <AppShell>
+      <section className="raise-layout">
+        <div className="raise-main">
+          <Link to="/" className="back-link"><ArrowLeft size={16} /> Back to feed</Link>
+          <div className="section-heading">
+            <p className="eyebrow">New civic report</p>
+            <h1>Raise an issue from the web</h1>
+          </div>
+
+          {!isAuthenticated && (
+            <div className="notice">
+              <AlertTriangle size={18} />
+              <span>Sign in or create an account before submitting.</span>
+            </div>
+          )}
+
+          <form
+            className="issue-form"
+            onSubmit={(event) => {
+              event.preventDefault();
+              if (!isAuthenticated) {
+                toast.error('Please sign in before submitting');
+                return;
+              }
+              submitIssue.mutate();
+            }}
+          >
+            <fieldset>
+              <legend>Category</legend>
+              <div className="category-grid">
+                {CATEGORIES.map(([value, label]) => (
+                  <button
+                    key={value}
+                    type="button"
+                    className={form.category === value ? 'active' : ''}
+                    onClick={() => setForm((state) => ({ ...state, category: value }))}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </fieldset>
+
+            <label>
+              Issue title
+              <input
+                required
+                maxLength={80}
+                value={form.title}
+                onChange={(event) => setForm((state) => ({ ...state, title: event.target.value }))}
+                placeholder="Large pothole near station exit"
+              />
+            </label>
+
+            <label>
+              Description
+              <textarea
+                rows={5}
+                maxLength={500}
+                value={form.description}
+                onChange={(event) => setForm((state) => ({ ...state, description: event.target.value }))}
+                placeholder="Add context, landmark, severity, or timing"
+              />
+            </label>
+
+            <div className="location-row">
+              <label>
+                Location label
+                <input
+                  value={form.location_label}
+                  onChange={(event) => setForm((state) => ({ ...state, location_label: event.target.value }))}
+                  placeholder="Andheri West, Mumbai"
+                />
+              </label>
+              <button className="button secondary location-button" type="button" onClick={getLocation} disabled={locating}>
+                {locating ? <Loader2 size={17} className="spin" /> : <LocateFixed size={17} />}
+                Use current
+              </button>
+            </div>
+
+            <div className="coordinate-row">
+              <label>
+                Latitude
+                <input
+                  required
+                  type="number"
+                  step="any"
+                  value={location.lat}
+                  onChange={(event) => setLocation((state) => ({ ...state, lat: Number(event.target.value) }))}
+                />
+              </label>
+              <label>
+                Longitude
+                <input
+                  required
+                  type="number"
+                  step="any"
+                  value={location.lng}
+                  onChange={(event) => setLocation((state) => ({ ...state, lng: Number(event.target.value) }))}
+                />
+              </label>
+            </div>
+
+            <label className="checkbox-row">
+              <input
+                type="checkbox"
+                checked={form.is_anonymous}
+                onChange={(event) => setForm((state) => ({ ...state, is_anonymous: event.target.checked }))}
+              />
+              Submit anonymously in public feed
+            </label>
+
+            <button className="button primary submit-button" type="submit" disabled={submitIssue.isPending}>
+              {submitIssue.isPending ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
+              Submit issue
+            </button>
+          </form>
+        </div>
+
+        <aside className="raise-side">
+          {isAuthenticated ? (
+            <div className="side-panel">
+              <ShieldCheck size={22} />
+              <h2>Ready to submit</h2>
+              <p>Your report will be stored in Supabase and appear in the public feed.</p>
+            </div>
+          ) : (
+            <AuthPanel compact />
+          )}
+        </aside>
+      </section>
+    </AppShell>
+  );
+}
+
+function IssueDetailPage() {
+  const { id } = useParams();
+  const navigate = useNavigate();
+
+  const { data, isLoading } = useQuery({
+    queryKey: ['issue', id],
+    queryFn: () => api.get(`/api/issues/${id}`).then((r) => r.data),
+  });
+
+  const issue = data?.issue;
+
+  return (
+    <AppShell>
+      <section className="detail-page">
+        <button className="back-link" type="button" onClick={() => navigate(-1)}>
+          <ArrowLeft size={16} />
+          Back
+        </button>
+
+        {isLoading ? (
+          <div className="detail-card loading-card" />
+        ) : !issue ? (
+          <EmptyState />
+        ) : (
+          <article className="detail-card">
+            <div className="issue-meta">
+              <span className="pill category">{CATEGORY_LABELS[issue.category] || 'Other'}</span>
+              <span className="pill status">{STATUS_LABELS[issue.status] || issue.status}</span>
+            </div>
+            <h1>{issue.title}</h1>
+            <p>{issue.description || 'No description added yet.'}</p>
+            <div className="detail-grid">
+              <span><MapPin size={17} /> {issue.wards?.name || issue.location_label || 'Mumbai'}</span>
+              <span><ThumbsUp size={17} /> {issue.upvote_count || 0} upvotes</span>
+              <span><Clock3 size={17} /> {formatDistanceToNow(new Date(issue.created_at), { addSuffix: true })}</span>
+            </div>
+          </article>
+        )}
+      </section>
+    </AppShell>
+  );
+}
+
+export default function App() {
+  return (
+    <Routes>
+      <Route path="/" element={<DashboardPage />} />
+      <Route path="/raise" element={<RaiseIssuePage />} />
+      <Route path="/login" element={<LoginPage />} />
+      <Route path="/issues/:id" element={<IssueDetailPage />} />
+      <Route path="*" element={<Navigate to="/" replace />} />
+    </Routes>
+  );
+}
