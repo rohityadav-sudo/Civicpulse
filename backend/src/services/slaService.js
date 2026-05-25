@@ -5,13 +5,17 @@ const logger = require('../utils/logger');
 // ─── Compute SLA deadline for a new issue ────────────────────
 async function computeSlaDeadline(ward_id, category) {
   // Ward-specific config wins over global (NULL ward_id)
-  const { data: config } = await supabase
+  let query = supabase
     .from('sla_config')
     .select('sla_minutes, sla_value, sla_unit')
     .eq('category', category)
-    .eq('is_active', true)
-    .or(`ward_id.eq.${ward_id},ward_id.is.null`)
-    .order('ward_id', { nullsFirst: false }) // ward-specific first
+    .eq('is_active', true);
+
+  query = ward_id
+    ? query.or(`ward_id.eq.${ward_id},ward_id.is.null`).order('ward_id', { nullsFirst: false })
+    : query.is('ward_id', null);
+
+  const { data: config } = await query
     .limit(1)
     .maybeSingle();
 

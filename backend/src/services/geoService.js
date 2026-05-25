@@ -6,9 +6,10 @@ const supabase = require('../config/supabase');
  */
 async function resolveRepresentatives(lat, lng) {
   // Step 1: Find ward by GPS point
-  const { data: ward, error: wardError } = await supabase
+  const { data: wards, error: wardError } = await supabase
     .rpc('find_ward_by_point', { lat, lng });
 
+  const ward = Array.isArray(wards) ? wards[0] : wards;
   if (wardError || !ward) {
     console.warn(`No ward found for lat:${lat} lng:${lng}`);
     return { ward_id: null, zone_id: null, corporator_id: null, mla_id: null, mp_id: null };
