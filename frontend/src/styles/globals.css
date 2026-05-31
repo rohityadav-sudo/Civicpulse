@@ -1184,6 +1184,18 @@ legend {
   display: none;
 }
 
+.template-tools {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.template-help {
+  margin: -4px 0 4px;
+  color: var(--muted);
+  font-size: 14px;
+}
+
 .mapping-stats {
   display: grid;
   grid-template-columns: repeat(3, 1fr);

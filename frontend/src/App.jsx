@@ -13,6 +13,7 @@ import {
   CircleUserRound,
   Clock3,
   Database,
+  Download,
   Eye,
   FileText,
   Flame,
@@ -1338,8 +1339,10 @@ function ProfileSettingsPage() {
   );
 }
 
-const SAMPLE_REP_CSV = `state_code,state_name,city,zone_name,ward_number,ward_name,corporator_name,corporator_party,corporator_phone,corporator_email,mla_name,mla_party,mla_constituency,mla_phone,mla_email,term_start,source_url
-MH,Maharashtra,Mumbai,K-West,K-West,Andheri West,Sample Corporator,Independent,,,Sample MLA,Independent,Andheri West,,,2026-01-01,`;
+const SAMPLE_REP_CSV = `state_code,state_name,city,zone_name,ward_number,ward_name,corporator_name,corporator_party,corporator_phone,corporator_email,mla_name,mla_party,mla_constituency,mla_phone,mla_email,term_start,term_end,source_url
+MH,Maharashtra,Mumbai,A,A,Colaba,Colaba Corporator,Party,+911111111111,colaba-corp@example.com,Colaba MLA,Party,Colaba,+912222222222,colaba-mla@example.com,2026-01-01,,https://official-source.example/colaba
+MH,Maharashtra,Mumbai,H-West,H-West,Bandra West,Bandra Corporator,Party,+913333333333,bandra-corp@example.com,Bandra MLA,Party,Bandra West,+914444444444,bandra-mla@example.com,2026-01-01,,https://official-source.example/bandra
+MH,Maharashtra,Mumbai,K-West,K-West,Andheri West,Andheri Corporator,Party,+915555555555,andheri-corp@example.com,Andheri MLA,Party,Andheri West,+916666666666,andheri-mla@example.com,2026-01-01,,https://official-source.example/andheri`;
 
 function AdminImportPage() {
   const { isAuthenticated, user } = useAuthStore();
@@ -1441,6 +1444,24 @@ function AdminImportPage() {
               <Upload size={19} />
               <h2>Manual import</h2>
             </div>
+
+            <div className="template-tools">
+              <a
+                className="button secondary"
+                href="/representative-import-template.csv"
+                download="civicpulse-representative-import-template.csv"
+              >
+                <Download size={17} />
+                Download sample CSV
+              </a>
+              <button className="button secondary" type="button" onClick={() => setImportText(SAMPLE_REP_CSV)}>
+                <FileText size={17} />
+                Load sample rows
+              </button>
+            </div>
+            <p className="template-help">
+              Download the CSV, update ward/corporator/MLA rows, then upload it here or paste the edited rows below.
+            </p>
 
             <label>
               Official source URL
