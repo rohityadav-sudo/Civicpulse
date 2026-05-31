@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import { Link, Navigate, Route, Routes, useNavigate, useParams } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
@@ -8,6 +8,7 @@ import {
   ArrowLeft,
   BarChart3,
   CalendarDays,
+  Camera,
   CheckCircle2,
   CircleUserRound,
   Clock3,
@@ -21,15 +22,18 @@ import {
   LocateFixed,
   LogOut,
   MapPin,
+  Mic,
   Megaphone,
   Plus,
   Search,
   Send,
   ShieldCheck,
   Siren,
+  Square,
   ThumbsUp,
   Trophy,
   Upload,
+  X,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import api from './utils/api';
@@ -61,6 +65,20 @@ const DEFAULT_LOCATION = {
   lat: 19.076,
   lng: 72.8777,
   location_label: 'Mumbai',
+};
+
+const formatWard = (ward) => (
+  [ward?.ward_number, ward?.name, ward?.city, ward?.state_name].filter(Boolean).join(' · ')
+);
+
+const filterWards = (wards, search) => {
+  const value = search.trim().toLowerCase();
+  return (wards || []).filter((ward) => {
+    if (!value) return true;
+    return [ward.name, ward.ward_number, ward.city, ward.state_name]
+      .filter(Boolean)
+      .some((field) => String(field).toLowerCase().includes(value));
+  });
 };
 
 const DAILY_PUZZLES = [
@@ -144,16 +162,21 @@ function AppShell({ children }) {
         <nav className="topnav" aria-label="Primary">
           <Link to="/">Feed</Link>
           <Link to="/raise">Raise issue</Link>
+          {isAuthenticated && <Link to="/profile">Profile</Link>}
           {user?.role === 'ADMIN' && <Link to="/admin">Admin</Link>}
         </nav>
 
         <div className="top-actions">
           {isAuthenticated ? (
             <>
-              <span className="user-chip">
-                <CircleUserRound size={16} />
+              <Link className="user-chip" to="/profile">
+                {user?.avatar_url ? (
+                  <img src={user.avatar_url} alt="" className="user-chip-avatar" />
+                ) : (
+                  <CircleUserRound size={16} />
+                )}
                 {user?.name || 'Citizen'}
-              </span>
+              </Link>
               <button className="icon-button" type="button" onClick={() => { logout(); navigate('/'); }} aria-label="Sign out">
                 <LogOut size={18} />
               </button>
@@ -588,9 +611,12 @@ function LoginPage() {
 }
 
 function RaiseIssuePage() {
-  const { isAuthenticated } = useAuthStore();
+  const { isAuthenticated, user } = useAuthStore();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
+  const fileRef = useRef(null);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
   const [form, setForm] = useState({
     title: '',
     description: '',
@@ -600,6 +626,24 @@ function RaiseIssuePage() {
   });
   const [location, setLocation] = useState(DEFAULT_LOCATION);
   const [locating, setLocating] = useState(false);
+  const [media, setMedia] = useState([]);
+  const [wardSearch, setWardSearch] = useState('');
+  const [selectedWardId, setSelectedWardId] = useState(user?.home_ward_id || '');
+  const [voiceMode, setVoiceMode] = useState(false);
+  const [recording, setRecording] = useState(false);
+  const [voiceStep, setVoiceStep] = useState('idle');
+  const [voiceError, setVoiceError] = useState('');
+  const [transcript, setTranscript] = useState('');
+
+  const locations = useQuery({
+    queryKey: ['raise-locations'],
+    queryFn: () => api.get('/api/reps/locations', { params: { limit: 1000 } }).then((r) => r.data),
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const wards = locations.data?.wards || [];
+  const selectedWard = wards.find((ward) => ward.id === selectedWardId);
+  const visibleWards = useMemo(() => filterWards(wards, wardSearch).slice(0, 8), [wards, wardSearch]);
 
   const submitIssue = useMutation({
     mutationFn: async () => {
@@ -607,17 +651,27 @@ function RaiseIssuePage() {
       fd.append('title', form.title.trim());
       fd.append('description', form.description.trim());
       fd.append('category', form.category);
-      fd.append('location_label', form.location_label.trim() || location.location_label || 'Mumbai');
+      fd.append('location_label', form.location_label.trim() || selectedWard?.name || location.location_label || 'Mumbai');
       fd.append('is_anonymous', String(form.is_anonymous));
       fd.append('lat', String(location.lat));
       fd.append('lng', String(location.lng));
-      fd.append('source', 'TYPED');
+      fd.append('source', voiceStep === 'review' ? 'VOICE' : 'TYPED');
+      if (selectedWard) {
+        fd.append('ward_id', selectedWard.id);
+        fd.append('ward_name', selectedWard.name || '');
+        fd.append('ward_number', selectedWard.ward_number || '');
+        fd.append('city', selectedWard.city || '');
+        fd.append('state_code', selectedWard.state_code || '');
+        fd.append('state_name', selectedWard.state_name || '');
+      }
+      media.forEach((item) => fd.append('media', item.file, item.file.name));
       const { data } = await api.post('/api/issues', fd);
       return data;
     },
     onSuccess: (data) => {
-      toast.success('Issue raised');
+      toast.success(data.media_warning || 'Issue raised');
       queryClient.invalidateQueries({ queryKey: ['issues'] });
+      queryClient.invalidateQueries({ queryKey: ['feed-stats'] });
       navigate(`/issues/${data.issue.id}`);
     },
     onError: (error) => toast.error(error.response?.data?.error || 'Issue submission failed'),
@@ -647,6 +701,120 @@ function RaiseIssuePage() {
     );
   };
 
+  const addMedia = (event) => {
+    const files = Array.from(event.target.files || []);
+    if (!files.length) return;
+    const slots = Math.max(0, 4 - media.length);
+    if (files.length > slots) toast.error('Maximum 4 media files');
+    const next = files.slice(0, slots).map((file) => ({
+      id: `${file.name}-${file.lastModified}-${Math.random().toString(16).slice(2)}`,
+      file,
+      preview: URL.createObjectURL(file),
+    }));
+    setMedia((state) => [...state, ...next]);
+    event.target.value = '';
+  };
+
+  const removeMedia = (id) => {
+    setMedia((state) => {
+      const item = state.find((entry) => entry.id === id);
+      if (item) URL.revokeObjectURL(item.preview);
+      return state.filter((entry) => entry.id !== id);
+    });
+  };
+
+  const stopTracks = () => {
+    mediaRecorderRef.current?.stream?.getTracks?.().forEach((track) => track.stop());
+  };
+
+  const startRecording = async () => {
+    if (recording || voiceStep === 'processing') return;
+    if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
+      setVoiceError('Voice recording is not available in this browser. Please type the issue manually.');
+      return;
+    }
+
+    try {
+      setVoiceMode(true);
+      setVoiceStep('starting');
+      setVoiceError('');
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      const recorder = new MediaRecorder(stream);
+      audioChunksRef.current = [];
+      recorder.ondataavailable = (event) => {
+        if (event.data?.size) audioChunksRef.current.push(event.data);
+      };
+      recorder.onstop = () => {
+        const blob = new Blob(audioChunksRef.current, { type: 'audio/webm' });
+        audioChunksRef.current = [];
+        if (blob.size) handleAudioReady(blob);
+        stopTracks();
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
+      setRecording(true);
+      setVoiceStep('recording');
+    } catch {
+      setVoiceMode(false);
+      setVoiceStep('idle');
+      setVoiceError('Microphone permission was not granted. Please type the issue manually.');
+      toast.error('Microphone permission was not granted');
+    }
+  };
+
+  const stopRecording = () => {
+    if (!mediaRecorderRef.current || mediaRecorderRef.current.state === 'inactive') {
+      setVoiceMode(false);
+      setVoiceStep('idle');
+      setVoiceError('Microphone recording was not ready. Please type the issue manually.');
+      return;
+    }
+    setRecording(false);
+    setVoiceStep('processing');
+    mediaRecorderRef.current.stop();
+  };
+
+  const cancelRecording = () => {
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== 'inactive') {
+      mediaRecorderRef.current.onstop = null;
+      mediaRecorderRef.current.stop();
+    }
+    stopTracks();
+    audioChunksRef.current = [];
+    setRecording(false);
+    setVoiceMode(false);
+    setVoiceStep('idle');
+  };
+
+  const handleAudioReady = async (blob) => {
+    try {
+      const fd = new FormData();
+      fd.append('audio', blob, 'recording.webm');
+      const { data: stt } = await api.post('/api/voice/transcribe', fd);
+      setTranscript(stt.transcript || '');
+      const { data: nlp } = await api.post('/api/voice/extract', { transcript: stt.transcript });
+      const { title, category, description } = nlp.extracted || {};
+      setForm((state) => ({
+        ...state,
+        title: title || state.title,
+        description: description || state.description,
+        category: category || state.category,
+      }));
+      setVoiceStep('review');
+      toast.success('Voice details added. Please review before submitting.');
+    } catch (error) {
+      const message = error.response?.data?.code === 'OPENAI_NOT_CONFIGURED'
+        ? 'Voice AI is not configured yet. Typed issue submission is ready.'
+        : (error.response?.data?.error || 'Could not transcribe audio. Please type the issue manually.');
+      setVoiceError(message);
+      setVoiceMode(false);
+      setVoiceStep('idle');
+      toast.error(message);
+    } finally {
+      setRecording(false);
+    }
+  };
+
   return (
     <AppShell>
       <section className="raise-layout">
@@ -664,12 +832,56 @@ function RaiseIssuePage() {
             </div>
           )}
 
+          <div className="voice-panel">
+            <div>
+              <p className="eyebrow">Voice assist</p>
+              <strong>{voiceStep === 'processing' ? 'Processing audio' : voiceStep === 'recording' ? 'Listening now' : 'Speak or type your report'}</strong>
+              <span>Voice can fill the form, and it falls back to typing if transcription is unavailable.</span>
+            </div>
+            <div className="voice-actions">
+              {recording ? (
+                <button className="button primary" type="button" onClick={stopRecording}>
+                  <Square size={16} />
+                  Stop
+                </button>
+              ) : (
+                <button className="button secondary" type="button" onClick={startRecording} disabled={voiceStep === 'processing'}>
+                  {voiceStep === 'processing' ? <Loader2 size={17} className="spin" /> : <Mic size={17} />}
+                  Voice
+                </button>
+              )}
+              {(voiceMode || recording) && (
+                <button className="icon-button" type="button" onClick={cancelRecording} aria-label="Cancel voice recording">
+                  <X size={18} />
+                </button>
+              )}
+            </div>
+          </div>
+
+          {voiceStep === 'review' && (
+            <div className="notice success-notice">
+              <ShieldCheck size={18} />
+              <span>AI filled the form from your voice. Review details before submitting{transcript ? `: "${transcript.slice(0, 90)}${transcript.length > 90 ? '...' : ''}"` : '.'}</span>
+            </div>
+          )}
+
+          {voiceError && (
+            <div className="notice">
+              <AlertTriangle size={18} />
+              <span>{voiceError}</span>
+            </div>
+          )}
+
           <form
             className="issue-form"
             onSubmit={(event) => {
               event.preventDefault();
               if (!isAuthenticated) {
                 toast.error('Please sign in before submitting');
+                return;
+              }
+              if (!selectedWard && !location) {
+                toast.error('Choose a ward or add location before submitting');
                 return;
               }
               submitIssue.mutate();
@@ -751,6 +963,67 @@ function RaiseIssuePage() {
               </label>
             </div>
 
+            <fieldset>
+              <legend>Ward mapping</legend>
+              {selectedWard && (
+                <div className="selected-ward">
+                  <strong>Mapped to {selectedWard.name}</strong>
+                  <span>{formatWard(selectedWard)}</span>
+                </div>
+              )}
+              <input
+                value={wardSearch}
+                onChange={(event) => setWardSearch(event.target.value)}
+                placeholder="Search ward, city, or state"
+              />
+              <div className="ward-options">
+                {locations.isLoading && <span className="muted-row">Loading wards...</span>}
+                {!locations.isLoading && locations.isError && <span className="muted-row">Could not load wards. You can still submit with GPS.</span>}
+                {!locations.isLoading && !locations.isError && visibleWards.map((ward) => (
+                  <button
+                    key={ward.id}
+                    type="button"
+                    className={selectedWardId === ward.id ? 'active' : ''}
+                    onClick={() => {
+                      setSelectedWardId(ward.id);
+                      setForm((state) => ({ ...state, location_label: state.location_label || ward.name }));
+                    }}
+                  >
+                    <strong>{ward.name}</strong>
+                    <span>{formatWard(ward)}</span>
+                  </button>
+                ))}
+                {!locations.isLoading && !locations.isError && !visibleWards.length && (
+                  <span className="muted-row">No wards found for this search.</span>
+                )}
+              </div>
+            </fieldset>
+
+            <fieldset>
+              <legend>Photos / video</legend>
+              <div className="media-uploader">
+                {media.map((item) => (
+                  <div className="media-thumb" key={item.id}>
+                    {item.file.type.startsWith('image/') ? (
+                      <img src={item.preview} alt="" />
+                    ) : (
+                      <span>{item.file.name}</span>
+                    )}
+                    <button type="button" onClick={() => removeMedia(item.id)} aria-label="Remove media">
+                      <X size={14} />
+                    </button>
+                  </div>
+                ))}
+                {media.length < 4 && (
+                  <button className="media-add" type="button" onClick={() => fileRef.current?.click()}>
+                    <Camera size={18} />
+                    Add
+                  </button>
+                )}
+                <input ref={fileRef} type="file" accept="image/*,video/*" multiple onChange={addMedia} />
+              </div>
+            </fieldset>
+
             <label className="checkbox-row">
               <input
                 type="checkbox"
@@ -783,6 +1056,25 @@ function RaiseIssuePage() {
   );
 }
 
+function RepSummary({ title, rep }) {
+  return (
+    <div className="rep-card">
+      <span>{title}</span>
+      {rep ? (
+        <>
+          <strong>{rep.name}</strong>
+          <small>{[rep.party, rep.constituency].filter(Boolean).join(' · ') || 'Mapped representative'}</small>
+        </>
+      ) : (
+        <>
+          <strong>Not mapped yet</strong>
+          <small>Admin can import or update representative data.</small>
+        </>
+      )}
+    </div>
+  );
+}
+
 function IssueDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
@@ -793,6 +1085,7 @@ function IssueDetailPage() {
   });
 
   const issue = data?.issue;
+  const timeline = [...(issue?.issue_history || [])].sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
 
   return (
     <AppShell>
@@ -807,20 +1100,239 @@ function IssueDetailPage() {
         ) : !issue ? (
           <EmptyState />
         ) : (
-          <article className="detail-card">
-            <div className="issue-meta">
-              <span className="pill category">{CATEGORY_LABELS[issue.category] || 'Other'}</span>
-              <span className="pill status">{STATUS_LABELS[issue.status] || issue.status}</span>
-            </div>
-            <h1>{issue.title}</h1>
-            <p>{issue.description || 'No description added yet.'}</p>
-            <div className="detail-grid">
-              <span><MapPin size={17} /> {issue.wards?.name || issue.location_label || 'Mumbai'}</span>
-              <span><ThumbsUp size={17} /> {issue.upvote_count || 0} upvotes</span>
-              <span><Clock3 size={17} /> {formatDistanceToNow(new Date(issue.created_at), { addSuffix: true })}</span>
-            </div>
-          </article>
+          <div className="detail-stack">
+            <article className="detail-card">
+              <div className="issue-meta">
+                <span className="pill category">{CATEGORY_LABELS[issue.category] || 'Other'}</span>
+                <span className="pill status">{STATUS_LABELS[issue.status] || issue.status}</span>
+              </div>
+              <h1>{issue.title}</h1>
+              <p>{issue.description || 'No description added yet.'}</p>
+              <div className="detail-grid">
+                <span><MapPin size={17} /> {issue.wards?.name || issue.location_label || issue.city || 'Mumbai'}</span>
+                <span><ThumbsUp size={17} /> {issue.upvote_count || 0} upvotes</span>
+                <span><Clock3 size={17} /> {formatDistanceToNow(new Date(issue.created_at), { addSuffix: true })}</span>
+              </div>
+            </article>
+
+            <section className="detail-card">
+              <h2>Mapped representatives</h2>
+              <div className="rep-grid">
+                <RepSummary title="Corporator" rep={issue.corporators} />
+                <RepSummary title="MLA" rep={issue.mlas} />
+                <RepSummary title="MP" rep={issue.mps} />
+              </div>
+            </section>
+
+            <section className="detail-card">
+              <h2>Timeline</h2>
+              <div className="timeline-list">
+                {timeline.length ? timeline.map((item) => (
+                  <div className="timeline-item" key={`${item.action}-${item.created_at}`}>
+                    <strong>{String(item.action || 'UPDATE').replace(/_/g, ' ')}</strong>
+                    <span>{item.actor_role || 'SYSTEM'} · {formatDistanceToNow(new Date(item.created_at), { addSuffix: true })}</span>
+                    {item.note && <p>{item.note}</p>}
+                  </div>
+                )) : (
+                  <div className="timeline-item">
+                    <strong>CREATED</strong>
+                    <span>CITIZEN · {formatDistanceToNow(new Date(issue.created_at), { addSuffix: true })}</span>
+                  </div>
+                )}
+              </div>
+            </section>
+          </div>
         )}
+      </section>
+    </AppShell>
+  );
+}
+
+function ProfileSettingsPage() {
+  const { isAuthenticated, user, updateUser, logout } = useAuthStore();
+  const navigate = useNavigate();
+  const avatarInputRef = useRef(null);
+  const [name, setName] = useState(user?.name || '');
+  const [phone, setPhone] = useState(user?.phone || '');
+  const [wardSearch, setWardSearch] = useState('');
+  const [selectedWardId, setSelectedWardId] = useState(user?.home_ward_id || '');
+  const [avatarPreview, setAvatarPreview] = useState(user?.avatar_url || '');
+
+  const locations = useQuery({
+    queryKey: ['profile-locations'],
+    queryFn: () => api.get('/api/reps/locations', { params: { limit: 1000 } }).then((r) => r.data),
+    enabled: isAuthenticated,
+    staleTime: 10 * 60 * 1000,
+  });
+
+  const wards = locations.data?.wards || [];
+  const visibleWards = useMemo(() => filterWards(wards, wardSearch).slice(0, 8), [wards, wardSearch]);
+  const selectedWard = wards.find((ward) => ward.id === selectedWardId);
+
+  const saveProfile = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.put('/api/auth/me', {
+        name,
+        phone,
+        home_ward_id: selectedWardId || null,
+      });
+      return data;
+    },
+    onSuccess: (data) => {
+      updateUser(data.user);
+      toast.success('Profile saved');
+    },
+    onError: (error) => toast.error(error.response?.data?.error || 'Profile update failed'),
+  });
+
+  const uploadAvatar = useMutation({
+    mutationFn: async (file) => {
+      const fd = new FormData();
+      fd.append('avatar', file, file.name);
+      const { data } = await api.post('/api/auth/me/avatar', fd);
+      return data;
+    },
+    onSuccess: (data) => {
+      updateUser(data.user);
+      setAvatarPreview(data.user.avatar_url);
+      toast.success('Profile photo updated');
+    },
+    onError: (error) => {
+      setAvatarPreview(user?.avatar_url || '');
+      toast.error(error.response?.data?.error || 'Profile photo upload failed');
+    },
+  });
+
+  const removeAvatar = useMutation({
+    mutationFn: async () => {
+      const { data } = await api.put('/api/auth/me', { avatar_url: null });
+      return data;
+    },
+    onSuccess: (data) => {
+      updateUser(data.user);
+      setAvatarPreview('');
+      toast.success('Profile photo removed');
+    },
+    onError: (error) => toast.error(error.response?.data?.error || 'Could not remove profile photo'),
+  });
+
+  const pickAvatar = (event) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    setAvatarPreview(URL.createObjectURL(file));
+    uploadAvatar.mutate(file);
+    event.target.value = '';
+  };
+
+  if (!isAuthenticated) {
+    return (
+      <AppShell>
+        <section className="auth-page">
+          <div>
+            <p className="eyebrow">Citizen profile</p>
+            <h1>Sign in to manage your ward and profile</h1>
+            <p className="lede">Your home ward helps CivicPulse map reports to the right corporator and MLA.</p>
+          </div>
+          <AuthPanel redirectTo="/profile" />
+        </section>
+      </AppShell>
+    );
+  }
+
+  return (
+    <AppShell>
+      <section className="profile-layout">
+        <Link to="/" className="back-link"><ArrowLeft size={16} /> Back to feed</Link>
+
+        <div className="profile-card profile-hero">
+          <button className="avatar-preview" type="button" onClick={() => avatarInputRef.current?.click()}>
+            {avatarPreview ? <img src={avatarPreview} alt="" /> : <span>{user?.name?.charAt(0) || 'C'}</span>}
+          </button>
+          <div>
+            <p className="eyebrow">Citizen profile</p>
+            <h1>{user?.name || 'Citizen'}</h1>
+            <p className="lede">{user?.email || user?.phone || 'CivicPulse account'}</p>
+            <div className="profile-actions">
+              <button className="button secondary" type="button" onClick={() => avatarInputRef.current?.click()} disabled={uploadAvatar.isPending}>
+                {uploadAvatar.isPending ? <Loader2 size={17} className="spin" /> : <Upload size={17} />}
+                Change photo
+              </button>
+              {avatarPreview && (
+                <button className="button secondary danger-button" type="button" onClick={() => removeAvatar.mutate()} disabled={removeAvatar.isPending}>
+                  Remove
+                </button>
+              )}
+              <input ref={avatarInputRef} type="file" accept="image/*" onChange={pickAvatar} hidden />
+            </div>
+          </div>
+        </div>
+
+        <form
+          className="profile-card profile-form"
+          onSubmit={(event) => {
+            event.preventDefault();
+            saveProfile.mutate();
+          }}
+        >
+          <div className="section-heading">
+            <div>
+              <p className="eyebrow">Account details</p>
+              <h2>Profile and home ward</h2>
+            </div>
+          </div>
+
+          <label>
+            Name
+            <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Your full name" />
+          </label>
+
+          <label>
+            Phone
+            <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Mobile number" />
+          </label>
+
+          <fieldset>
+            <legend>Home ward</legend>
+            {selectedWard && (
+              <div className="selected-ward">
+                <strong>{selectedWard.name}</strong>
+                <span>{formatWard(selectedWard)}</span>
+              </div>
+            )}
+            <input
+              value={wardSearch}
+              onChange={(event) => setWardSearch(event.target.value)}
+              placeholder="Search city, ward number, or ward name"
+            />
+            <div className="ward-options">
+              {locations.isLoading && <span className="muted-row">Loading wards...</span>}
+              {!locations.isLoading && locations.isError && <span className="muted-row">Could not load wards. Please try again later.</span>}
+              {!locations.isLoading && !locations.isError && visibleWards.map((ward) => (
+                <button
+                  key={ward.id}
+                  type="button"
+                  className={selectedWardId === ward.id ? 'active' : ''}
+                  onClick={() => setSelectedWardId(ward.id)}
+                >
+                  <strong>{ward.name}</strong>
+                  <span>{formatWard(ward)}</span>
+                </button>
+              ))}
+              {!locations.isLoading && !locations.isError && !visibleWards.length && <span className="muted-row">No wards found for this search.</span>}
+            </div>
+          </fieldset>
+
+          <div className="profile-footer-actions">
+            <button className="button primary submit-button" type="submit" disabled={saveProfile.isPending}>
+              {saveProfile.isPending ? <Loader2 size={18} className="spin" /> : <ShieldCheck size={18} />}
+              Save profile
+            </button>
+            <button className="button secondary danger-button" type="button" onClick={() => { logout(); navigate('/'); }}>
+              <LogOut size={17} />
+              Sign out
+            </button>
+          </div>
+        </form>
       </section>
     </AppShell>
   );
@@ -1001,6 +1513,7 @@ export default function App() {
       <Route path="/" element={<DashboardPage />} />
       <Route path="/raise" element={<RaiseIssuePage />} />
       <Route path="/login" element={<LoginPage />} />
+      <Route path="/profile" element={<ProfileSettingsPage />} />
       <Route path="/admin" element={<AdminImportPage />} />
       <Route path="/issues/:id" element={<IssueDetailPage />} />
       <Route path="*" element={<Navigate to="/" replace />} />

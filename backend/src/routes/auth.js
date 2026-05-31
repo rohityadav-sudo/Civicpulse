@@ -5,6 +5,12 @@ const bcrypt = require('bcryptjs');
 const { v4: uuidv4 } = require('uuid');
 const supabase = require('../config/supabase');
 const { authenticate } = require('../middleware/auth');
+const multer = require('multer');
+
+const avatarUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 3 * 1024 * 1024 },
+});
 
 const signToken = (user) => jwt.sign(
   { sub: user.id, role: user.role, rep_id: user.rep_id || null },
@@ -134,6 +140,46 @@ router.put('/me', authenticate, async (req, res) => {
     res.json({ user: sanitizeUser(user) });
   } catch (err) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+// ─── Upload current user avatar to Supabase Storage ──────────
+router.post('/me/avatar', authenticate, avatarUpload.single('avatar'), async (req, res) => {
+  try {
+    if (!req.file) return res.status(400).json({ error: 'Avatar image required' });
+    if (!req.file.mimetype?.startsWith('image/')) {
+      return res.status(400).json({ error: 'Avatar must be an image' });
+    }
+
+    const bucket = 'avatars';
+    const ext = (req.file.originalname?.split('.').pop() || 'jpg').replace(/[^a-z0-9]/gi, '').toLowerCase() || 'jpg';
+    const path = `users/${req.user.id}/${uuidv4()}.${ext}`;
+
+    const { error: bucketError } = await supabase.storage.createBucket(bucket, {
+      public: true,
+      fileSizeLimit: 3 * 1024 * 1024,
+    });
+    if (bucketError && !/already exists/i.test(bucketError.message || '')) throw bucketError;
+
+    const { error: uploadError } = await supabase.storage.from(bucket).upload(path, req.file.buffer, {
+      contentType: req.file.mimetype,
+      upsert: true,
+    });
+    if (uploadError) throw uploadError;
+
+    const { data: publicData } = supabase.storage.from(bucket).getPublicUrl(path);
+    const avatar_url = publicData.publicUrl;
+
+    const { data: user, error } = await supabase.from('users')
+      .update({ avatar_url })
+      .eq('id', req.user.id)
+      .select('*, wards(id, name, ward_number, city, state_name, zone_id)')
+      .single();
+    if (error) throw error;
+
+    res.json({ avatar_url, user: sanitizeUser(user) });
+  } catch (err) {
+    res.status(err.status || 500).json({ error: err.message || 'Avatar upload failed' });
   }
 });
 

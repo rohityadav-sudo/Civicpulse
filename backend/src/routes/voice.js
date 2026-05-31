@@ -25,14 +25,16 @@ router.post('/transcribe', authenticate, upload.single('audio'), async (req, res
 
     const openai = getOpenAIClient();
     const { File } = await import('node:buffer');
-    const audioFile = new File([req.file.buffer], 'recording.webm', { type: req.file.mimetype });
-
-    const transcription = await openai.audio.transcriptions.create({
+    const filename = (req.file.originalname || 'recording.m4a').replace(/[^a-z0-9._-]/gi, '_');
+    const audioFile = new File([req.file.buffer], filename, { type: req.file.mimetype || 'audio/m4a' });
+    const transcriptionRequest = {
       file: audioFile,
       model: 'whisper-1',
-      language: req.body.language || null, // auto-detect if null
       response_format: 'verbose_json'
-    });
+    };
+    if (req.body.language) transcriptionRequest.language = req.body.language;
+
+    const transcription = await openai.audio.transcriptions.create(transcriptionRequest);
 
     res.json({
       transcript: transcription.text,

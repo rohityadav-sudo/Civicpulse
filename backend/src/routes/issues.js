@@ -129,10 +129,17 @@ router.post('/', authenticate, upload.array('media', 4), async (req, res) => {
 
     if (error) throw error;
 
+    let media_warning = null;
+
     // Upload media files
     if (req.files?.length) {
-      const mediaInserts = await Promise.all(req.files.map(f => uploadMedia(f, issueId)));
-      await supabase.from('issue_media').insert(mediaInserts);
+      try {
+        const mediaInserts = await Promise.all(req.files.map(f => uploadMedia(f, issueId)));
+        await supabase.from('issue_media').insert(mediaInserts);
+      } catch (uploadErr) {
+        if (uploadErr.code !== 'S3_NOT_CONFIGURED') throw uploadErr;
+        media_warning = 'Issue raised. Media storage is not configured yet, so photos/videos were not uploaded.';
+      }
     }
 
     // Log history
@@ -140,7 +147,7 @@ router.post('/', authenticate, upload.array('media', 4), async (req, res) => {
       issue_id: issueId, action: 'CREATED', actor_id: req.user.id, actor_role: req.user.role
     });
 
-    res.status(201).json({ issue });
+    res.status(201).json({ issue, media_warning });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
