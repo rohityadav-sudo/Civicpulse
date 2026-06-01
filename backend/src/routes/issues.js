@@ -6,6 +6,12 @@ const { authenticate, optionalAuth, isRep, isAdminOrMod } = require('../middlewa
 const { resolveRepresentatives, resolveRepresentativesByWard, resolveRepresentativesByHierarchy } = require('../services/geoService');
 const { computeSlaDeadline } = require('../services/slaService');
 const { uploadMedia } = require('../services/mediaService');
+const {
+  resolveRequestLanguage,
+  localizeIssues,
+  upsertOriginalTranslation,
+  primeIssueTranslations,
+} = require('../services/languageService');
 const multer = require('multer');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
 
@@ -42,7 +48,9 @@ router.get('/', optionalAuth, async (req, res) => {
       data.forEach(i => { i.user_has_upvoted = voteSet.has(i.id); });
     }
 
-    res.json({ issues: data, total: count, page: +page, limit: +limit });
+    const languageCode = resolveRequestLanguage(req);
+    const issues = await localizeIssues(data, languageCode);
+    res.json({ issues, total: count, page: +page, limit: +limit, language_code: languageCode });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -69,7 +77,9 @@ router.get('/:id', optionalAuth, async (req, res) => {
       issue.user_has_upvoted = !!vote;
     }
 
-    res.json({ issue });
+    const languageCode = resolveRequestLanguage(req);
+    const [localizedIssue] = await localizeIssues([issue], languageCode);
+    res.json({ issue: localizedIssue, language_code: languageCode });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -104,6 +114,7 @@ router.post('/', authenticate, upload.array('media', 4), async (req, res) => {
     }
 
     const sla_deadline = await computeSlaDeadline(geo.ward_id, category);
+    const original_language = resolveRequestLanguage(req);
 
     const issueId = uuidv4();
     const { data: issue, error } = await supabase.from('issues').insert({
@@ -124,7 +135,8 @@ router.post('/', authenticate, upload.array('media', 4), async (req, res) => {
       mp_id: geo.mp_id,
       sla_deadline,
       is_anonymous: is_anonymous === 'true',
-      source: source || 'TYPED'
+      source: source || 'TYPED',
+      original_language
     }).select().single();
 
     if (error) throw error;
@@ -147,7 +159,20 @@ router.post('/', authenticate, upload.array('media', 4), async (req, res) => {
       issue_id: issueId, action: 'CREATED', actor_id: req.user.id, actor_role: req.user.role
     });
 
-    res.status(201).json({ issue, media_warning });
+    await upsertOriginalTranslation(issue, original_language);
+    primeIssueTranslations(issue).catch((err) => {
+      console.warn(`Translation priming failed for issue ${issueId}: ${err.message}`);
+    });
+
+    res.status(201).json({
+      issue: {
+        ...issue,
+        language_code: original_language,
+        translation_status: 'original',
+      },
+      media_warning,
+      language_code: original_language,
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

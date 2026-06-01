@@ -4,9 +4,11 @@ import { formatDistanceToNow } from 'date-fns';
 import { useAuthStore } from '../store/authStore';
 import api from '../utils/api';
 import { colors, CAT_CONFIG, STATUS_CONFIG } from '../utils/theme';
+import { categoryLabel, statusLabel, useT } from '../utils/i18n';
 
 export default function IssueCard({ issue, onUpvote, onPress }) {
   const { isAuthenticated } = useAuthStore();
+  const { t, language } = useT();
   const [upvoted, setUpvoted] = useState(issue.user_has_upvoted);
   const [count, setCount] = useState(issue.upvote_count || 0);
 
@@ -35,8 +37,8 @@ export default function IssueCard({ issue, onUpvote, onPress }) {
         <View style={[styles.escBand, issue.escalated_to_mp_at && styles.escBandRed]}>
           <Text style={[styles.escText, issue.escalated_to_mp_at && { color: colors.red2 }]}>
             {issue.escalated_to_mp_at
-              ? `● Escalated to MP ${issue.mps?.name || ''}`
-              : `● Escalated to MLA ${issue.mlas?.name || ''}`
+              ? `● ${t('escalatedMp')} ${issue.mps?.name || ''}`
+              : `● ${t('escalatedMla')} ${issue.mlas?.name || ''}`
             }
           </Text>
           <Text style={[styles.escTime, issue.escalated_to_mp_at && { color: colors.red2 }]}>
@@ -61,10 +63,10 @@ export default function IssueCard({ issue, onUpvote, onPress }) {
         {/* Meta */}
         <View style={styles.metaRow}>
           <View style={[styles.catBadge, { backgroundColor: cat.bg }]}>
-            <Text style={[styles.catTxt, { color: cat.color }]}>{cat.emoji} {issue.category}</Text>
+            <Text style={[styles.catTxt, { color: cat.color }]}>{cat.emoji} {categoryLabel(language, issue.category)}</Text>
           </View>
           <View style={[styles.statusBadge, { backgroundColor: status.bg }]}>
-            <Text style={[styles.statusTxt, { color: status.color }]}>{status.label}</Text>
+            <Text style={[styles.statusTxt, { color: status.color }]}>{statusLabel(language, issue.status) || status.label}</Text>
           </View>
         </View>
 
@@ -83,10 +85,10 @@ export default function IssueCard({ issue, onUpvote, onPress }) {
               <Text style={styles.repName}>
                 {esc ? (issue.mlas?.name || issue.mps?.name) : issue.corporators?.name || 'Unassigned'}
               </Text>
-              <Text style={styles.repRole}>{esc ? 'MLA/MP — Escalated' : 'Corporator'}</Text>
+              <Text style={styles.repRole}>{esc ? `MLA/MP — ${t('escalated')}` : t('corporator')}</Text>
             </View>
             <Text style={{ fontSize: 9, color: esc ? colors.fire2 : colors.text3 }}>
-              {esc ? 'Not Resolved' : 'Active'}
+              {esc ? t('escalated') : t('active')}
             </Text>
           </View>
         )}
@@ -103,7 +105,7 @@ export default function IssueCard({ issue, onUpvote, onPress }) {
           </View>
           <TouchableOpacity style={styles.engBtn} onPress={handleShare}>
             <Text style={{ fontSize: 14 }}>↗️</Text>
-            <Text style={styles.engTxt}>Share</Text>
+            <Text style={styles.engTxt}>{t('share')}</Text>
           </TouchableOpacity>
           <Text style={[styles.engTxt, { marginLeft: 'auto', color: colors.text3 }]}>
             {formatDistanceToNow(new Date(issue.created_at), { addSuffix: true })}

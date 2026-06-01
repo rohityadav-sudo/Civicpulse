@@ -6,6 +6,7 @@ const { v4: uuidv4 } = require('uuid');
 const supabase = require('../config/supabase');
 const { authenticate } = require('../middleware/auth');
 const multer = require('multer');
+const { normalizeLanguage } = require('../services/languageService');
 
 const avatarUpload = multer({
   storage: multer.memoryStorage(),
@@ -21,7 +22,7 @@ const signToken = (user) => jwt.sign(
 // ─── Register with email/password ────────────────────────────
 router.post('/register', async (req, res) => {
   try {
-    const { name, email, phone, password } = req.body;
+    const { name, email, phone, password, preferred_language } = req.body;
     if (!name || (!email && !phone))
       return res.status(400).json({ error: 'Name and email or phone required' });
 
@@ -35,6 +36,7 @@ router.post('/register', async (req, res) => {
       id: uuidv4(), name, email, phone,
       password_hash: hash,
       role: 'CITIZEN',
+      preferred_language: normalizeLanguage(preferred_language),
       is_active: true
     }).select().single();
 
@@ -49,7 +51,7 @@ router.post('/register', async (req, res) => {
 // ─── Login with email/password ───────────────────────────────
 router.post('/login', async (req, res) => {
   try {
-    const { email, phone, password } = req.body;
+    const { email, phone, password, preferred_language } = req.body;
     if (!email && !phone)
       return res.status(400).json({ error: 'Email or phone required' });
 
@@ -64,9 +66,17 @@ router.post('/login', async (req, res) => {
     if (!valid) return res.status(401).json({ error: 'Invalid credentials' });
     if (!user.is_active) return res.status(403).json({ error: 'Account suspended' });
 
-    await supabase.from('users').update({ last_active_at: new Date() }).eq('id', user.id);
+    const loginUpdates = { last_active_at: new Date() };
+    if (preferred_language) loginUpdates.preferred_language = normalizeLanguage(preferred_language);
+    const { data: updatedUser, error: updateError } = await supabase
+      .from('users')
+      .update(loginUpdates)
+      .eq('id', user.id)
+      .select('*')
+      .single();
+    if (updateError) throw updateError;
 
-    res.json({ token: signToken(user), user: sanitizeUser(user) });
+    res.json({ token: signToken(updatedUser), user: sanitizeUser(updatedUser) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -75,7 +85,7 @@ router.post('/login', async (req, res) => {
 // ─── Social login (Google / Facebook) ────────────────────────
 router.post('/social', async (req, res) => {
   try {
-    const { provider, uid, name, email, avatar_url } = req.body;
+    const { provider, uid, name, email, avatar_url, preferred_language } = req.body;
     if (!provider || !uid || !name)
       return res.status(400).json({ error: 'provider, uid, name required' });
 
@@ -86,14 +96,22 @@ router.post('/social', async (req, res) => {
       const { data: newUser, error } = await supabase.from('users').insert({
         id: uuidv4(), name, email,
         social_provider: provider, social_uid: uid,
-        avatar_url, role: 'CITIZEN', is_active: true
+        avatar_url, role: 'CITIZEN', preferred_language: normalizeLanguage(preferred_language), is_active: true
       }).select().single();
       if (error) throw error;
       user = newUser;
     }
 
-    await supabase.from('users').update({ last_active_at: new Date() }).eq('id', user.id);
-    res.json({ token: signToken(user), user: sanitizeUser(user) });
+    const updates = { last_active_at: new Date() };
+    if (preferred_language) updates.preferred_language = normalizeLanguage(preferred_language);
+    const { data: updatedUser, error: updateError } = await supabase
+      .from('users')
+      .update(updates)
+      .eq('id', user.id)
+      .select('*')
+      .single();
+    if (updateError) throw updateError;
+    res.json({ token: signToken(updatedUser), user: sanitizeUser(updatedUser) });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -115,11 +133,12 @@ router.get('/me', authenticate, async (req, res) => {
 router.put('/me', authenticate, async (req, res) => {
   try {
     const updates = {};
-    const { name, phone, avatar_url, home_ward_id } = req.body;
+    const { name, phone, avatar_url, home_ward_id, preferred_language } = req.body;
 
     if (name !== undefined) updates.name = String(name).trim();
     if (phone !== undefined) updates.phone = phone ? String(phone).trim() : null;
     if (avatar_url !== undefined) updates.avatar_url = avatar_url ? String(avatar_url).trim() : null;
+    if (preferred_language !== undefined) updates.preferred_language = normalizeLanguage(preferred_language);
     if (home_ward_id !== undefined) {
       if (home_ward_id) {
         const { data: ward } = await supabase.from('wards').select('id').eq('id', home_ward_id).maybeSingle();
@@ -193,6 +212,7 @@ router.put('/fcm-token', authenticate, async (req, res) => {
 const sanitizeUser = (u) => ({
   id: u.id, name: u.name, email: u.email, phone: u.phone,
   role: u.role, avatar_url: u.avatar_url, home_ward_id: u.home_ward_id,
+  preferred_language: normalizeLanguage(u.preferred_language),
   home_ward: u.wards || null
 });
 

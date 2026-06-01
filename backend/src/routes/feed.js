@@ -2,6 +2,7 @@ const express = require('express');
 const router = express.Router();
 const supabase = require('../config/supabase');
 const { optionalAuth } = require('../middleware/auth');
+const { resolveRequestLanguage, localizeIssues } = require('../services/languageService');
 
 // ─── GET /api/feed/home ───────────────────────────────────────
 router.get('/home', optionalAuth, async (req, res) => {
@@ -9,7 +10,7 @@ router.get('/home', optionalAuth, async (req, res) => {
     const { ward_id, state_code, city, category, sort = 'newest', page = 1, limit = 20 } = req.query;
 
     let query = supabase.from('issues')
-      .select(`id, title, category, status, location_label, created_at,
+      .select(`id, title, description, category, status, location_label, created_at, original_language,
                state_code, state_name, city, ward_number,
                upvote_count, comment_count, share_count, trending_score, trending_rank,
                is_community_spotlight, escalated_at, escalated_to_role,
@@ -45,7 +46,9 @@ router.get('/home', optionalAuth, async (req, res) => {
       issues.forEach(i => { i.user_has_upvoted = voteSet.has(i.id); });
     }
 
-    res.json({ issues });
+    const languageCode = resolveRequestLanguage(req);
+    const localizedIssues = await localizeIssues(issues, languageCode);
+    res.json({ issues: localizedIssues, language_code: languageCode });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -57,7 +60,7 @@ router.get('/escalated', optionalAuth, async (req, res) => {
     const { zone_id, state_code, city, category, sort = 'trending', page = 1, limit = 20 } = req.query;
 
     let query = supabase.from('issues')
-      .select(`id, title, category, status, location_label, created_at,
+      .select(`id, title, description, category, status, location_label, created_at, original_language,
                state_code, state_name, city, ward_number,
                upvote_count, comment_count, share_count, trending_score, trending_rank,
                escalated_at, escalated_to_role, escalated_to_mp_at, sla_deadline,
@@ -93,7 +96,9 @@ router.get('/escalated', optionalAuth, async (req, res) => {
       issues.forEach(i => { i.user_has_upvoted = voteSet.has(i.id); });
     }
 
-    res.json({ issues });
+    const languageCode = resolveRequestLanguage(req);
+    const localizedIssues = await localizeIssues(issues, languageCode);
+    res.json({ issues: localizedIssues, language_code: languageCode });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -105,7 +110,7 @@ router.get('/trending', optionalAuth, async (req, res) => {
     const { zone_id, state_code, city, limit = 10 } = req.query;
 
     let query = supabase.from('issues')
-      .select(`id, title, category, status, location_label, created_at,
+      .select(`id, title, description, category, status, location_label, created_at, original_language,
                state_code, state_name, city, ward_number,
                upvote_count, comment_count, share_count, trending_score, trending_rank,
                escalated_at, escalated_to_role,
@@ -125,7 +130,9 @@ router.get('/trending', optionalAuth, async (req, res) => {
     const { data: issues, error } = await query;
     if (error) throw error;
 
-    res.json({ issues });
+    const languageCode = resolveRequestLanguage(req);
+    const localizedIssues = await localizeIssues(issues, languageCode);
+    res.json({ issues: localizedIssues, language_code: languageCode });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

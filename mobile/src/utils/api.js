@@ -2,16 +2,19 @@ import axios from 'axios';
 import { Platform } from 'react-native';
 import * as SecureStore from 'expo-secure-store';
 import { useAuthStore } from '../store/authStore';
+import { useLanguageStore } from '../store/languageStore';
 
 const API_URL = process.env.EXPO_PUBLIC_API_URL || 'https://civicpulse-api-yf40.onrender.com';
 
 const api = axios.create({ baseURL: API_URL, timeout: 30000 });
 
 export async function postMultipart(path, formData) {
+  const language = useLanguageStore.getState().language || 'en';
   if (Platform.OS === 'web') {
     const token = await SecureStore.getItemAsync('token');
     const headers = token ? { Authorization: `Bearer ${token}` } : {};
-    const response = await fetch(`${API_URL}${path}`, {
+    const separator = path.includes('?') ? '&' : '?';
+    const response = await fetch(`${API_URL}${path}${separator}lang=${encodeURIComponent(language)}`, {
       method: 'POST',
       headers,
       body: formData,
@@ -32,6 +35,8 @@ export async function postMultipart(path, formData) {
 api.interceptors.request.use(async (config) => {
   const token = await SecureStore.getItemAsync('token');
   if (token) config.headers.Authorization = `Bearer ${token}`;
+  const language = useLanguageStore.getState().language || 'en';
+  config.params = { lang: language, ...(config.params || {}) };
   return config;
 });
 

@@ -9,6 +9,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { Audio } from 'expo-av';
 import api, { postMultipart } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
+import { categoryLabel, useT } from '../utils/i18n';
 import { colors, CAT_CONFIG } from '../utils/theme';
 
 const CATS = Object.keys(CAT_CONFIG);
@@ -49,6 +50,7 @@ const appendPickedMedia = async (fd, asset, index) => {
 export default function CreateIssueScreen({ navigation, route }) {
   const initVoice = route?.params?.voiceMode === true;
   const { user } = useAuthStore();
+  const { t, language } = useT();
   const queryClient = useQueryClient();
   const [form, setForm]       = useState({ title: '', description: '', category: '', is_anonymous: false });
   const [location, setLoc]    = useState(null);
@@ -158,9 +160,10 @@ export default function CreateIssueScreen({ navigation, route }) {
       } else {
         fd.append('audio', { uri, name: 'recording.m4a', type: 'audio/m4a' });
       }
+      fd.append('language', language);
       const { data: stt } = await postMultipart('/api/voice/transcribe', fd);
       setTranscript(stt.transcript);
-      const { data: nlp } = await api.post('/api/voice/extract', { transcript: stt.transcript });
+      const { data: nlp } = await api.post('/api/voice/extract', { transcript: stt.transcript, language_code: language });
       const { title, category, description } = nlp.extracted;
       setForm(p => ({ ...p, title: title || p.title, description: description || p.description, category: category || p.category }));
       setVoiceStep('review');
@@ -191,6 +194,7 @@ export default function CreateIssueScreen({ navigation, route }) {
     try {
       const fd = createUploadFormData();
       Object.entries(form).forEach(([k, v]) => fd.append(k, String(v)));
+      fd.append('language_code', language);
       if (location) {
         fd.append('lat', location.lat);
         fd.append('lng', location.lng);
@@ -251,7 +255,7 @@ export default function CreateIssueScreen({ navigation, route }) {
         </TouchableOpacity>
 
         <Text style={styles.voiceTitle}>{voiceTitle}</Text>
-        <Text style={styles.voiceSub}>Speak in English, Hindi or Marathi</Text>
+        <Text style={styles.voiceSub}>Speak in your selected language</Text>
 
         <Animated.View style={[styles.micOrb, { transform: [{ scale: pulseAnim }] }]}>
           <Text style={{ fontSize: 44 }}>{voiceStep === 'processing' || voiceStep === 'starting' ? '⏳' : '🎙️'}</Text>
@@ -272,10 +276,10 @@ export default function CreateIssueScreen({ navigation, route }) {
         <TouchableOpacity onPress={goBack}>
           <Text style={{ color: colors.text2, fontSize: 20 }}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>{voiceStep === 'review' ? '📋 Review Issue' : 'Raise an Issue'}</Text>
+        <Text style={styles.headerTitle}>{voiceStep === 'review' ? `📋 ${t('reviewIssue')}` : t('raiseIssue')}</Text>
         <TouchableOpacity onPress={() => { setVoiceMode(true); startRecording(); }} disabled={voiceStep === 'recording' || voiceStep === 'processing'}
           style={{ backgroundColor: 'rgba(59,130,246,0.12)', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(59,130,246,0.3)' }}>
-          <Text style={{ color: colors.accent2, fontSize: 12, fontWeight: '600' }}>{voiceStep === 'processing' ? 'Processing…' : '🎤 Voice'}</Text>
+          <Text style={{ color: colors.accent2, fontSize: 12, fontWeight: '600' }}>{voiceStep === 'processing' ? 'Processing…' : `🎤 ${t('voice')}`}</Text>
         </TouchableOpacity>
       </View>
 
@@ -295,7 +299,7 @@ export default function CreateIssueScreen({ navigation, route }) {
         )}
 
         {/* Category */}
-        <Text style={styles.label}>Category *</Text>
+        <Text style={styles.label}>{t('category')}</Text>
         <View style={styles.catGrid}>
           {CATS.map(cat => {
             const c = CAT_CONFIG[cat];
@@ -303,25 +307,25 @@ export default function CreateIssueScreen({ navigation, route }) {
               <TouchableOpacity key={cat} onPress={() => setForm(p => ({ ...p, category: cat }))}
                 style={[styles.catBtn, form.category === cat && { borderColor: colors.accent, backgroundColor: 'rgba(59,130,246,0.15)' }]}>
                 <Text style={{ fontSize: 18 }}>{c.emoji}</Text>
-                <Text style={[styles.catBtnTxt, form.category === cat && { color: colors.accent2 }]}>{cat}</Text>
+                <Text style={[styles.catBtnTxt, form.category === cat && { color: colors.accent2 }]}>{categoryLabel(language, cat)}</Text>
               </TouchableOpacity>
             );
           })}
         </View>
 
         {/* Title */}
-        <Text style={styles.label}>Issue Title *</Text>
+        <Text style={styles.label}>{t('issueTitle')}</Text>
         <TextInput style={styles.input} placeholder="e.g. Large pothole near Andheri Station" placeholderTextColor={colors.text3}
           value={form.title} onChangeText={t => setForm(p => ({ ...p, title: t }))} maxLength={80} />
 
         {/* Description */}
-        <Text style={styles.label}>Description</Text>
+        <Text style={styles.label}>{t('description')}</Text>
         <TextInput style={[styles.input, { height: 80 }]} placeholder="Add more details…" placeholderTextColor={colors.text3}
           value={form.description} onChangeText={t => setForm(p => ({ ...p, description: t }))}
           multiline textAlignVertical="top" maxLength={500} />
 
         {/* Location */}
-        <Text style={styles.label}>Location *</Text>
+        <Text style={styles.label}>{t('location')}</Text>
         <View style={[styles.input, styles.locRow]}>
           <Text style={{ flex: 1, color: location ? colors.text : colors.text3, fontSize: 13 }}>
             {locating ? '📍 Detecting…' : location ? `📍 ${location.lat.toFixed(4)}, ${location.lng.toFixed(4)}` : '📍 Not detected'}
@@ -332,7 +336,7 @@ export default function CreateIssueScreen({ navigation, route }) {
         </View>
 
         {/* Ward mapping */}
-        <Text style={styles.label}>Ward Mapping</Text>
+        <Text style={styles.label}>{t('wardMapping')}</Text>
         {!!selectedWard && (
           <View style={styles.selectedWard}>
             <Text style={styles.selectedWardTitle}>Mapped to {selectedWard.name}</Text>
@@ -362,7 +366,7 @@ export default function CreateIssueScreen({ navigation, route }) {
         </View>
 
         {/* Photos */}
-        <Text style={styles.label}>Photos / Video</Text>
+        <Text style={styles.label}>{t('photosVideo')}</Text>
         <View style={styles.mediaRow}>
           {media.map((m, i) => (
             <View key={i} style={styles.mediaThumb}>
@@ -385,13 +389,13 @@ export default function CreateIssueScreen({ navigation, route }) {
           <View style={[styles.toggle, form.is_anonymous && styles.toggleOn]}>
             <View style={[styles.toggleKnob, form.is_anonymous && styles.toggleKnobOn]} />
           </View>
-          <Text style={{ fontSize: 13, color: colors.text2 }}>Submit anonymously</Text>
+          <Text style={{ fontSize: 13, color: colors.text2 }}>{t('submitAnonymous')}</Text>
         </TouchableOpacity>
 
         {/* Submit */}
         <TouchableOpacity style={[styles.submitBtn, ((!location && !selectedWard) || loading) && styles.submitBtnDisabled]}
           onPress={handleSubmit} disabled={(!location && !selectedWard) || loading}>
-          <Text style={styles.submitBtnTxt}>{loading ? 'Submitting…' : '🚨 Submit Issue'}</Text>
+          <Text style={styles.submitBtnTxt}>{loading ? t('submitting') : `🚨 ${t('submitIssue')}`}</Text>
         </TouchableOpacity>
       </View>
     </ScrollView>

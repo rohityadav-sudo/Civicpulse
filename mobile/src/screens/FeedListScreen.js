@@ -3,6 +3,7 @@ import { View, Text, FlatList, StyleSheet, RefreshControl } from 'react-native';
 import { useQuery } from '@tanstack/react-query';
 import api from '../utils/api';
 import IssueCard from '../components/IssueCard';
+import { useT } from '../utils/i18n';
 import { colors } from '../utils/theme';
 
 const CONFIG = {
@@ -30,8 +31,9 @@ function openIssue(navigation, id) {
 
 export default function FeedListScreen({ navigation, mode = 'trending' }) {
   const config = CONFIG[mode] || CONFIG.trending;
+  const { t, language } = useT();
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['feed-list', mode],
+    queryKey: ['feed-list', language, mode],
     queryFn: () => api.get(config.endpoint, { params: config.params }).then((r) => r.data),
   });
 
@@ -40,7 +42,7 @@ export default function FeedListScreen({ navigation, mode = 'trending' }) {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.title}>{config.title}</Text>
+        <Text style={styles.title}>{mode === 'escalated' ? t('escalated') : t('trending')}</Text>
         <Text style={styles.subtitle}>{config.subtitle}</Text>
       </View>
 
@@ -55,7 +57,7 @@ export default function FeedListScreen({ navigation, mode = 'trending' }) {
         ListEmptyComponent={!isLoading && (
           <View style={styles.empty}>
             <Text style={{ fontSize: 36 }}>{config.emptyIcon}</Text>
-            <Text style={styles.emptyTitle}>Nothing here yet</Text>
+            <Text style={styles.emptyTitle}>{t('noIssues')}</Text>
             <Text style={styles.emptyText}>New reports will appear here automatically.</Text>
           </View>
         )}

@@ -5,6 +5,7 @@ import {
 import { useQuery } from '@tanstack/react-query';
 import { formatDistanceToNow } from 'date-fns';
 import api from '../utils/api';
+import { categoryLabel, statusLabel, useT } from '../utils/i18n';
 import { colors, CAT_CONFIG, STATUS_CONFIG } from '../utils/theme';
 
 function safeBack(navigation) {
@@ -31,9 +32,10 @@ function RepBlock({ title, rep }) {
 
 export default function IssueDetailScreen({ navigation, route }) {
   const { id } = route.params || {};
+  const { t, language } = useT();
 
   const { data, isLoading, isError, error, refetch } = useQuery({
-    queryKey: ['issue-detail', id],
+    queryKey: ['issue-detail', id, language],
     enabled: !!id,
     queryFn: () => api.get(`/api/issues/${id}`).then((r) => r.data),
   });
@@ -49,23 +51,23 @@ export default function IssueDetailScreen({ navigation, route }) {
         <TouchableOpacity onPress={() => safeBack(navigation)} style={styles.backButton}>
           <Text style={styles.backText}>←</Text>
         </TouchableOpacity>
-        <Text style={styles.headerTitle}>Issue Detail</Text>
+        <Text style={styles.headerTitle}>{t('issueDetail')}</Text>
         <TouchableOpacity onPress={refetch} style={styles.refreshButton}>
-          <Text style={styles.refreshText}>Refresh</Text>
+          <Text style={styles.refreshText}>{t('refresh')}</Text>
         </TouchableOpacity>
       </View>
 
       {id && isLoading && (
         <View style={styles.loading}>
           <ActivityIndicator color={colors.accent2} />
-          <Text style={styles.muted}>Loading issue…</Text>
+          <Text style={styles.muted}>{t('loadingIssue')}</Text>
         </View>
       )}
 
       {(!id || (!isLoading && !issue)) && (
         <View style={styles.empty}>
           <Text style={{ fontSize: 36 }}>📍</Text>
-          <Text style={styles.emptyTitle}>Issue not found</Text>
+          <Text style={styles.emptyTitle}>{t('issueNotFound')}</Text>
           <Text style={styles.muted}>
             {isError ? (error?.response?.data?.error || 'Could not load this report.') : 'This report may have been removed or closed.'}
           </Text>
@@ -85,15 +87,15 @@ export default function IssueDetailScreen({ navigation, route }) {
           <View style={styles.card}>
             <View style={styles.metaRow}>
               <View style={[styles.badge, { backgroundColor: cat.bg }]}>
-                <Text style={[styles.badgeText, { color: cat.color }]}>{cat.emoji} {issue.category}</Text>
+                <Text style={[styles.badgeText, { color: cat.color }]}>{cat.emoji} {categoryLabel(language, issue.category)}</Text>
               </View>
               <View style={[styles.badge, { backgroundColor: status.bg }]}>
-                <Text style={[styles.badgeText, { color: status.color }]}>{status.label}</Text>
+                <Text style={[styles.badgeText, { color: status.color }]}>{statusLabel(language, issue.status) || status.label}</Text>
               </View>
             </View>
 
             <Text style={styles.title}>{issue.title}</Text>
-            <Text style={styles.description}>{issue.description || 'No description added.'}</Text>
+            <Text style={styles.description}>{issue.description || t('noDescription')}</Text>
 
             <View style={styles.facts}>
               <Text style={styles.fact}>📍 {issue.wards?.name || issue.location_label || issue.city || 'Location pending'}</Text>
@@ -104,8 +106,8 @@ export default function IssueDetailScreen({ navigation, route }) {
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Mapped representatives</Text>
-            <RepBlock title="Corporator / Councillor" rep={issue.corporators} />
+            <Text style={styles.sectionTitle}>{t('mappedReps')}</Text>
+            <RepBlock title={t('corporator')} rep={issue.corporators} />
             <RepBlock title="MLA" rep={issue.mlas} />
             <RepBlock title="MP" rep={issue.mps} />
             {!issue.corporators && !issue.mlas && (
@@ -114,7 +116,7 @@ export default function IssueDetailScreen({ navigation, route }) {
           </View>
 
           <View style={styles.card}>
-            <Text style={styles.sectionTitle}>Timeline</Text>
+            <Text style={styles.sectionTitle}>{t('timeline')}</Text>
             {(issue.issue_history || []).map((event) => (
               <View key={`${event.action}-${event.created_at}`} style={styles.timelineItem}>
                 <Text style={styles.timelineTitle}>{event.action}</Text>
@@ -122,7 +124,7 @@ export default function IssueDetailScreen({ navigation, route }) {
                 {!!event.note && <Text style={styles.description}>{event.note}</Text>}
               </View>
             ))}
-            {!issue.issue_history?.length && <Text style={styles.muted}>No timeline activity yet.</Text>}
+            {!issue.issue_history?.length && <Text style={styles.muted}>{t('noTimeline')}</Text>}
           </View>
         </>
       )}

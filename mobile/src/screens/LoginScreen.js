@@ -5,11 +5,16 @@ import {
 } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { useAuthStore } from '../store/authStore';
+import { useLanguageStore } from '../store/languageStore';
+import LanguagePicker from '../components/LanguagePicker';
+import { useT } from '../utils/i18n';
 import api from '../utils/api';
 import { colors } from '../utils/theme';
 
 export default function LoginScreen({ navigation }) {
   const { login } = useAuthStore();
+  const { t, language } = useT();
+  const setLanguage = useLanguageStore((state) => state.setLanguage);
   const [mode, setMode] = useState('landing');
   const [isRegister, setIsRegister] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -22,7 +27,8 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
     try {
       const endpoint = isRegister ? '/api/auth/register' : '/api/auth/login';
-      const { data } = await api.post(endpoint, form);
+      const { data } = await api.post(endpoint, { ...form, preferred_language: language });
+      await setLanguage(data.user?.preferred_language || language);
       await login(data.user, data.token);
     } catch (err) {
       Alert.alert('Error', err.response?.data?.error || 'Authentication failed');
@@ -35,10 +41,12 @@ export default function LoginScreen({ navigation }) {
     setLoading(true);
     try {
       const { data } = await api.post('/api/auth/login', { email: 'demo@civicpulse.in', password: 'demo1234' });
+      await setLanguage(data.user?.preferred_language || language);
       await login(data.user, data.token);
     } catch {
       try {
-        const { data } = await api.post('/api/auth/register', { name: 'Demo Citizen', email: 'demo@civicpulse.in', password: 'demo1234' });
+        const { data } = await api.post('/api/auth/register', { name: 'Demo Citizen', email: 'demo@civicpulse.in', password: 'demo1234', preferred_language: language });
+        await setLanguage(data.user?.preferred_language || language);
         await login(data.user, data.token);
       } catch (e) {
         Alert.alert('Error', 'Demo login failed. Check backend connection.');
@@ -57,11 +65,11 @@ export default function LoginScreen({ navigation }) {
           <Text style={styles.logoIcon}>🛡️</Text>
         </LinearGradient>
         <Text style={styles.brand}>CivicPulse</Text>
-        <Text style={styles.tagline}>Raise issues. Track resolutions.{'\n'}Hold your representative accountable.</Text>
+        <Text style={styles.tagline}>{t('welcomeTagline')}</Text>
 
         {/* Stats */}
         <View style={styles.statsRow}>
-          {[['12.4K','Issues Raised'],['78%','Resolved'],['227','Ward Reps']].map(([v,l]) => (
+          {[['12.4K',t('issuesRaised')],['78%',t('resolved')],['227',t('wardReps')]].map(([v,l]) => (
             <View key={l} style={styles.statItem}>
               <Text style={styles.statVal}>{v}</Text>
               <Text style={styles.statLbl}>{l}</Text>
@@ -72,11 +80,12 @@ export default function LoginScreen({ navigation }) {
         {mode === 'landing' && (
           <View style={styles.btns}>
             <TouchableOpacity style={styles.btnPrimary} onPress={() => setMode('email')}>
-              <Text style={styles.btnPrimaryTxt}>✉  Continue with Email</Text>
+              <Text style={styles.btnPrimaryTxt}>✉  {t('continueEmail')}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={styles.btnOutline} onPress={handleDemo} disabled={loading}>
-              <Text style={styles.btnOutlineTxt}>{loading ? 'Loading…' : '⚡  Quick Demo — Explore App'}</Text>
+              <Text style={styles.btnOutlineTxt}>{loading ? 'Loading…' : `⚡  ${t('quickDemo')}`}</Text>
             </TouchableOpacity>
+            <LanguagePicker />
             <Text style={styles.terms}>By continuing you agree to our Terms of Service</Text>
           </View>
         )}
@@ -85,21 +94,22 @@ export default function LoginScreen({ navigation }) {
           <View style={styles.form}>
             <TouchableOpacity onPress={() => setMode('landing')} style={styles.backRow}>
               <Text style={styles.backTxt}>← Back</Text>
-              <Text style={styles.formTitle}>{isRegister ? 'Create Account' : 'Sign In'}</Text>
+              <Text style={styles.formTitle}>{isRegister ? t('createAccount') : t('signIn')}</Text>
             </TouchableOpacity>
 
+            <LanguagePicker />
             {isRegister && (
-              <TextInput style={styles.input} placeholder="Full name" placeholderTextColor={colors.text3}
+              <TextInput style={styles.input} placeholder={t('fullName')} placeholderTextColor={colors.text3}
                 value={form.name} onChangeText={t => setForm(p => ({ ...p, name: t }))} />
             )}
-            <TextInput style={styles.input} placeholder="Email address" placeholderTextColor={colors.text3}
+            <TextInput style={styles.input} placeholder={t('email')} placeholderTextColor={colors.text3}
               keyboardType="email-address" autoCapitalize="none"
               value={form.email} onChangeText={t => setForm(p => ({ ...p, email: t }))} />
-            <TextInput style={styles.input} placeholder="Password" placeholderTextColor={colors.text3}
+            <TextInput style={styles.input} placeholder={t('password')} placeholderTextColor={colors.text3}
               secureTextEntry value={form.password} onChangeText={t => setForm(p => ({ ...p, password: t }))} />
 
             <TouchableOpacity style={[styles.btnPrimary, { opacity: loading ? 0.7 : 1 }]} onPress={handleAuth} disabled={loading}>
-              <Text style={styles.btnPrimaryTxt}>{loading ? 'Please wait…' : isRegister ? 'Create Account' : 'Sign In'}</Text>
+              <Text style={styles.btnPrimaryTxt}>{loading ? t('pleaseWait') : isRegister ? t('createAccount') : t('signIn')}</Text>
             </TouchableOpacity>
 
             <TouchableOpacity onPress={() => setIsRegister(!isRegister)}>

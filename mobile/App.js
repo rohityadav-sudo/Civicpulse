@@ -6,6 +6,8 @@ import { View, Text } from 'react-native';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 
 import { useAuthStore } from './src/store/authStore';
+import { useLanguageStore } from './src/store/languageStore';
+import { useT } from './src/utils/i18n';
 import { colors } from './src/utils/theme';
 
 import LoginScreen      from './src/screens/LoginScreen';
@@ -20,6 +22,7 @@ const Tab   = createBottomTabNavigator();
 const qc    = new QueryClient({ defaultOptions: { queries: { staleTime: 30000, retry: 1 } } });
 
 const TAB_ICON = { Home: '🏠', Escalated: '📢', Create: '➕', Trending: '🔥', Profile: '👤' };
+const TAB_LABEL = { Home: 'home', Escalated: 'escalated', Create: 'create', Trending: 'trending', Profile: 'profile' };
 
 function EscalatedScreen(props) {
   return <FeedListScreen {...props} mode="escalated" />;
@@ -39,18 +42,23 @@ function TabIcon({ name, focused }) {
 }
 
 function TabNavigator() {
+  const { t } = useT();
   return (
     <Tab.Navigator
       screenOptions={({ route }) => ({
         headerShown: false,
         tabBarIcon: ({ focused }) => <TabIcon name={route.name} focused={focused} />,
-        tabBarLabel: () => null,
+        tabBarLabel: ({ focused }) => (
+          <Text style={{ color: focused ? colors.accent2 : colors.text3, fontSize: 10, fontWeight: '700' }}>
+            {t(TAB_LABEL[route.name] || 'home')}
+          </Text>
+        ),
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: 1,
           paddingBottom: 8,
-          height: 65,
+          height: 72,
         },
       })}
     >
@@ -85,7 +93,8 @@ function AppNavigator() {
 
 export default function App() {
   const { init } = useAuthStore();
-  useEffect(() => { init(); }, []);
+  const initLanguage = useLanguageStore((state) => state.initLanguage);
+  useEffect(() => { init(); initLanguage(); }, []);
 
   return (
     <QueryClientProvider client={qc}>

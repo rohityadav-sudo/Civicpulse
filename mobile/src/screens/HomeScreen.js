@@ -4,6 +4,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useAuthStore } from '../store/authStore';
 import api from '../utils/api';
 import IssueCard from '../components/IssueCard';
+import { useT } from '../utils/i18n';
 import { colors } from '../utils/theme';
 
 const FILTERS = ['All','Trending','Escalated','Resolved'];
@@ -11,11 +12,12 @@ const SORT_MAP = { All: 'newest', Trending: 'trending', Escalated: 'escalated', 
 
 export default function HomeScreen({ navigation }) {
   const { user } = useAuthStore();
+  const { t, language } = useT();
   const [filter, setFilter]   = useState('All');
   const [search, setSearch]   = useState('');
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['feed', filter, user?.home_ward_id],
+    queryKey: ['feed', language, filter, user?.home_ward_id],
     queryFn: () => api.get('/api/feed/home', { params: {
       sort: SORT_MAP[filter],
       status: filter === 'Resolved' ? 'RESOLVED' : undefined,
@@ -48,7 +50,7 @@ export default function HomeScreen({ navigation }) {
       <View style={styles.header}>
         <View>
           <Text style={styles.greeting}>{greeting}, {user?.name?.split(' ')[0]}</Text>
-          <Text style={styles.title}>Your Ward Feed</Text>
+          <Text style={styles.title}>{t('yourWardFeed')}</Text>
         </View>
         <TouchableOpacity style={styles.avatar} onPress={() => navigation.navigate('Profile')}>
           {user?.avatar_url ? (
@@ -64,7 +66,7 @@ export default function HomeScreen({ navigation }) {
         <Text style={{ fontSize: 14, color: colors.text3 }}>🔍</Text>
         <TextInput
           style={styles.searchInput}
-          placeholder="Search issues in your ward…"
+          placeholder={t('searchWard')}
           placeholderTextColor={colors.text3}
           value={search}
           onChangeText={setSearch}
@@ -83,7 +85,7 @@ export default function HomeScreen({ navigation }) {
           <TouchableOpacity key={f} onPress={() => setFilter(f)}
             style={[styles.chip, filter === f && styles.chipActive]}>
             <Text style={[styles.chipTxt, filter === f && styles.chipTxtActive]}>
-              {f === 'Trending' ? '🔥 Trending' : f}
+              {f === 'Trending' ? `🔥 ${t('trending')}` : f === 'All' ? t('all') : f === 'Escalated' ? t('escalated') : f === 'Resolved' ? t('resolved') : f}
             </Text>
           </TouchableOpacity>
         ))}
@@ -106,7 +108,7 @@ export default function HomeScreen({ navigation }) {
           <View style={{ alignItems: 'center', padding: 40 }}>
             <Text style={{ fontSize: 36, marginBottom: 12 }}>🏙️</Text>
             <Text style={{ color: colors.text3, textAlign: 'center' }}>
-              {user?.home_ward_id ? 'No issues found for your home ward yet.' : 'No issues found. Set your home ward in Profile or raise the first issue!'}
+              {user?.home_ward_id ? t('noWardIssues') : t('noIssues')}
             </Text>
           </View>
         )}

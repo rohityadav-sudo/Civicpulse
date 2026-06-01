@@ -17,6 +17,7 @@ import {
   Eye,
   FileText,
   Flame,
+  Globe2,
   Lightbulb,
   ListFilter,
   Loader2,
@@ -39,6 +40,8 @@ import {
 import toast from 'react-hot-toast';
 import api from './utils/api';
 import { useAuthStore } from './store/authStore';
+import { useLanguageStore } from './store/languageStore';
+import { categoryLabel, statusLabel, useT } from './utils/i18n';
 
 const CATEGORIES = [
   ['POTHOLE', 'Pothole'],
@@ -145,9 +148,45 @@ function getDailyPuzzle() {
   };
 }
 
+function LanguageSelect({ label = false, className = '' }) {
+  const { t, languages, language } = useT();
+  const setLanguage = useLanguageStore((state) => state.setLanguage);
+  const { isAuthenticated, updateUser } = useAuthStore();
+  const queryClient = useQueryClient();
+
+  const savePreference = useMutation({
+    mutationFn: (preferred_language) => api.put('/api/auth/me', { preferred_language }),
+    onSuccess: (response) => {
+      updateUser(response.data.user);
+      queryClient.invalidateQueries();
+    },
+    onError: () => toast.error('Could not save language preference'),
+  });
+
+  const changeLanguage = (event) => {
+    const nextLanguage = event.target.value;
+    setLanguage(nextLanguage);
+    queryClient.invalidateQueries();
+    if (isAuthenticated) savePreference.mutate(nextLanguage);
+  };
+
+  return (
+    <label className={`language-select ${className}`}>
+      <Globe2 size={16} />
+      {label && <span>{t('language')}</span>}
+      <select value={language} onChange={changeLanguage} aria-label={t('language')}>
+        {languages.map((item) => (
+          <option key={item.code} value={item.code}>{item.nativeName}</option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function AppShell({ children }) {
   const { isAuthenticated, user, logout } = useAuthStore();
   const navigate = useNavigate();
+  const { t } = useT();
 
   return (
     <div className="app-shell">
@@ -161,13 +200,14 @@ function AppShell({ children }) {
         </Link>
 
         <nav className="topnav" aria-label="Primary">
-          <Link to="/">Feed</Link>
-          <Link to="/raise">Raise issue</Link>
-          {isAuthenticated && <Link to="/profile">Profile</Link>}
-          {user?.role === 'ADMIN' && <Link to="/admin">Admin</Link>}
+          <Link to="/">{t('feed')}</Link>
+          <Link to="/raise">{t('raiseIssue')}</Link>
+          {isAuthenticated && <Link to="/profile">{t('profile')}</Link>}
+          {user?.role === 'ADMIN' && <Link to="/admin">{t('admin')}</Link>}
         </nav>
 
         <div className="top-actions">
+          <LanguageSelect />
           {isAuthenticated ? (
             <>
               <Link className="user-chip" to="/profile">
@@ -178,16 +218,16 @@ function AppShell({ children }) {
                 )}
                 {user?.name || 'Citizen'}
               </Link>
-              <button className="icon-button" type="button" onClick={() => { logout(); navigate('/'); }} aria-label="Sign out">
+              <button className="icon-button" type="button" onClick={() => { logout(); navigate('/'); }} aria-label={t('signOut')}>
                 <LogOut size={18} />
               </button>
             </>
           ) : (
-            <Link className="button secondary" to="/login">Sign in</Link>
+            <Link className="button secondary" to="/login">{t('signIn')}</Link>
           )}
           <Link className="button primary" to="/raise">
             <Plus size={17} />
-            Raise issue
+            {t('raiseIssue')}
           </Link>
         </div>
       </header>
@@ -199,16 +239,17 @@ function AppShell({ children }) {
 
 function StatStrip() {
   const motionProps = useMotionProps();
+  const { t } = useT();
   const { data, isLoading } = useQuery({
     queryKey: ['feed-stats'],
     queryFn: () => api.get('/api/feed/stats').then((r) => r.data),
   });
 
   const stats = [
-    { label: 'Total issues', value: data?.total_issues ?? 0, icon: BarChart3 },
-    { label: 'Resolved', value: data?.resolved_issues ?? 0, icon: CheckCircle2 },
-    { label: 'Resolution rate', value: `${data?.resolution_rate ?? 0}%`, icon: ShieldCheck },
-    { label: 'Active reps', value: data?.active_reps ?? 0, icon: Megaphone },
+    { label: t('statsTotal'), value: data?.total_issues ?? 0, icon: BarChart3 },
+    { label: t('statsResolved'), value: data?.resolved_issues ?? 0, icon: CheckCircle2 },
+    { label: t('statsRate'), value: `${data?.resolution_rate ?? 0}%`, icon: ShieldCheck },
+    { label: t('statsReps'), value: data?.active_reps ?? 0, icon: Megaphone },
   ];
 
   return (
@@ -226,6 +267,7 @@ function StatStrip() {
 
 function PortalHero() {
   const reduced = useReducedMotion();
+  const { t } = useT();
 
   return (
     <motion.section
@@ -235,19 +277,19 @@ function PortalHero() {
       transition={{ duration: 0.55, ease: 'easeOut' }}
     >
       <div className="hero-copy">
-        <p className="eyebrow">Citizen portal</p>
-        <h1>Raise civic issues and keep your ward moving</h1>
+        <p className="eyebrow">{t('citizenPortal')}</p>
+        <h1>{t('heroTitle')}</h1>
         <p className="lede">
-          Report potholes, leaks, garbage, safety hazards, and streetlight problems from one public dashboard.
+          {t('heroCopy')}
         </p>
         <div className="hero-actions">
           <Link className="button primary large" to="/raise">
             <Siren size={18} />
-            Raise issue
+            {t('raiseIssue')}
           </Link>
           <a className="button secondary large" href="#daily-puzzle">
             <Trophy size={18} />
-            Daily puzzle
+            {t('dailyPuzzle')}
           </a>
         </div>
       </div>
@@ -270,6 +312,7 @@ function PortalHero() {
 
 function DailyPuzzleCard() {
   const reduced = useReducedMotion();
+  const { t } = useT();
   const { key, puzzle } = getDailyPuzzle();
   const [selected, setSelected] = useState(() => {
     const stored = window.localStorage.getItem(key);
@@ -295,7 +338,7 @@ function DailyPuzzleCard() {
       <div className="puzzle-header">
         <span className="puzzle-icon"><Lightbulb size={20} /></span>
         <div>
-          <p className="eyebrow">Daily civic puzzle</p>
+          <p className="eyebrow">{t('dailyPuzzle')}</p>
           <h2>{puzzle.title}</h2>
         </div>
         <span className="puzzle-date"><CalendarDays size={15} /> Today</span>
@@ -340,12 +383,13 @@ function DailyPuzzleCard() {
 
 function DashboardPage() {
   const reduced = useReducedMotion();
+  const { t, language } = useT();
   const [search, setSearch] = useState('');
   const [category, setCategory] = useState('');
   const [sort, setSort] = useState('newest');
 
   const { data, isLoading, refetch } = useQuery({
-    queryKey: ['issues', category, sort],
+    queryKey: ['issues', language, category, sort],
     queryFn: () => api.get('/api/feed/home', {
       params: {
         category: category || undefined,
@@ -380,8 +424,8 @@ function DashboardPage() {
             whileInView={reduced ? undefined : { opacity: 1, y: 0 }}
             viewport={{ once: true, amount: 0.35 }}
           >
-            <p className="eyebrow">Citizen streak</p>
-            <h2>Make civic action a habit</h2>
+            <p className="eyebrow">{t('citizenStreak')}</p>
+            <h2>{t('habitTitle')}</h2>
             <div className="streak-row">
               <span>1</span>
               <span>2</span>
@@ -389,14 +433,14 @@ function DashboardPage() {
               <span>4</span>
               <span>5</span>
             </div>
-            <p>Try the daily puzzle, upvote useful reports, and raise clear issues when you spot them.</p>
+            <p>{t('habitCopy')}</p>
           </motion.aside>
         </div>
 
         <div className="workspace-header feed-heading">
           <div>
-            <p className="eyebrow">Live civic feed</p>
-            <h2>Browse recent reports</h2>
+            <p className="eyebrow">{t('liveFeed')}</p>
+            <h2>{t('browseReports')}</h2>
           </div>
         </div>
 
@@ -406,25 +450,25 @@ function DashboardPage() {
             <input
               value={search}
               onChange={(event) => setSearch(event.target.value)}
-              placeholder="Search by issue, ward, or location"
+              placeholder={t('searchPlaceholder')}
             />
           </label>
 
           <label className="select-field">
             <ListFilter size={17} />
             <select value={category} onChange={(event) => setCategory(event.target.value)}>
-              <option value="">All categories</option>
-              {CATEGORIES.map(([value, label]) => <option key={value} value={value}>{label}</option>)}
+              <option value="">{t('allCategories')}</option>
+              {CATEGORIES.map(([value]) => <option key={value} value={value}>{categoryLabel(language, value)}</option>)}
             </select>
           </label>
 
           <label className="select-field">
             <Flame size={17} />
             <select value={sort} onChange={(event) => setSort(event.target.value)}>
-              <option value="newest">Newest</option>
-              <option value="trending">Trending</option>
-              <option value="upvotes">Most upvoted</option>
-              <option value="escalated">Escalated</option>
+              <option value="newest">{t('newest')}</option>
+              <option value="trending">{t('trending')}</option>
+              <option value="upvotes">{t('mostUpvoted')}</option>
+              <option value="escalated">{t('escalated')}</option>
             </select>
           </label>
         </div>
@@ -446,7 +490,8 @@ function DashboardPage() {
 function IssueCard({ issue, onRefresh }) {
   const reduced = useReducedMotion();
   const { isAuthenticated } = useAuthStore();
-  const status = STATUS_LABELS[issue.status] || issue.status || 'Open';
+  const { t, language } = useT();
+  const status = statusLabel(language, issue.status);
   const created = issue.created_at ? formatDistanceToNow(new Date(issue.created_at), { addSuffix: true }) : '';
   const isEscalated = Boolean(issue.escalated_at);
 
@@ -463,12 +508,12 @@ function IssueCard({ issue, onRefresh }) {
       whileHover={reduced ? undefined : { y: -5, transition: { duration: 0.16 } }}
     >
       <div className="issue-meta">
-        <span className="pill category">{CATEGORY_LABELS[issue.category] || 'Other'}</span>
+        <span className="pill category">{categoryLabel(language, issue.category)}</span>
         <span className="pill status">{status}</span>
       </div>
 
       <h2>{issue.title}</h2>
-      <p>{issue.description || 'No description added yet.'}</p>
+      <p>{issue.description || t('noDescription')}</p>
 
       <div className="issue-location">
         <MapPin size={15} />
@@ -481,7 +526,7 @@ function IssueCard({ issue, onRefresh }) {
           className="text-button"
           onClick={() => {
             if (!isAuthenticated) {
-              toast.error('Sign in to upvote');
+              toast.error(t('signIn'));
               return;
             }
             upvote.mutate();
@@ -497,7 +542,7 @@ function IssueCard({ issue, onRefresh }) {
         </span>
         <Link to={`/issues/${issue.id}`} className="text-button">
           <Eye size={16} />
-          View
+          {t('view')}
         </Link>
       </div>
     </motion.article>
@@ -505,12 +550,13 @@ function IssueCard({ issue, onRefresh }) {
 }
 
 function EmptyState() {
+  const { t } = useT();
   return (
     <div className="empty-state">
       <Siren size={30} />
-      <h2>No issues match this view</h2>
-      <p>Raise the first report for your area or clear the filters.</p>
-      <Link className="button primary" to="/raise">Raise issue</Link>
+      <h2>{t('emptyTitle')}</h2>
+      <p>{t('emptyCopy')}</p>
+      <Link className="button primary" to="/raise">{t('raiseIssue')}</Link>
     </div>
   );
 }
@@ -518,6 +564,8 @@ function EmptyState() {
 function AuthPanel({ compact = false, redirectTo = '/raise' }) {
   const navigate = useNavigate();
   const { login } = useAuthStore();
+  const { t, language } = useT();
+  const setLanguage = useLanguageStore((state) => state.setLanguage);
   const [mode, setMode] = useState('register');
   const [form, setForm] = useState({ name: '', email: '', password: '' });
 
@@ -525,34 +573,36 @@ function AuthPanel({ compact = false, redirectTo = '/raise' }) {
     mutationFn: async () => {
       const endpoint = mode === 'register' ? '/api/auth/register' : '/api/auth/login';
       const payload = mode === 'register'
-        ? form
-        : { email: form.email, password: form.password };
+        ? { ...form, preferred_language: language }
+        : { email: form.email, password: form.password, preferred_language: language };
       const { data } = await api.post(endpoint, payload);
       return data;
     },
     onSuccess: (data) => {
       login(data.user, data.token);
-      toast.success(mode === 'register' ? 'Account created' : 'Signed in');
+      setLanguage(data.user?.preferred_language || language);
+      toast.success(mode === 'register' ? t('accountCreated') : t('signedIn'));
       navigate(redirectTo);
     },
-    onError: (error) => toast.error(error.response?.data?.error || 'Authentication failed'),
+    onError: (error) => toast.error(error.response?.data?.error || t('authFailed')),
   });
 
   return (
     <section className={`auth-panel ${compact ? 'compact' : ''}`}>
       <div className="auth-tabs" role="tablist">
         <button type="button" className={mode === 'register' ? 'active' : ''} onClick={() => setMode('register')}>
-          Register
+          {t('register')}
         </button>
         <button type="button" className={mode === 'login' ? 'active' : ''} onClick={() => setMode('login')}>
-          Sign in
+          {t('signIn')}
         </button>
       </div>
 
       <form onSubmit={(event) => { event.preventDefault(); auth.mutate(); }} className="auth-form">
+        <LanguageSelect label />
         {mode === 'register' && (
           <label>
-            Full name
+            {t('fullName')}
             <input
               required
               value={form.name}
@@ -562,7 +612,7 @@ function AuthPanel({ compact = false, redirectTo = '/raise' }) {
           </label>
         )}
         <label>
-          Email
+          {t('email')}
           <input
             required
             type="email"
@@ -572,7 +622,7 @@ function AuthPanel({ compact = false, redirectTo = '/raise' }) {
           />
         </label>
         <label>
-          Password
+          {t('password')}
           <input
             required
             minLength={8}
@@ -584,7 +634,7 @@ function AuthPanel({ compact = false, redirectTo = '/raise' }) {
         </label>
         <button type="submit" className="button primary" disabled={auth.isPending}>
           {auth.isPending ? <Loader2 size={17} className="spin" /> : <ShieldCheck size={17} />}
-          {mode === 'register' ? 'Create account' : 'Sign in'}
+          {mode === 'register' ? t('createAccount') : t('signIn')}
         </button>
       </form>
     </section>
@@ -593,16 +643,17 @@ function AuthPanel({ compact = false, redirectTo = '/raise' }) {
 
 function LoginPage() {
   const { isAuthenticated } = useAuthStore();
+  const { t } = useT();
   if (isAuthenticated) return <Navigate to="/raise" replace />;
 
   return (
     <AppShell>
       <section className="auth-page">
         <div>
-          <p className="eyebrow">Citizen access</p>
-          <h1>Create an account to raise and track issues</h1>
+          <p className="eyebrow">{t('authEyebrow')}</p>
+          <h1>{t('authTitle')}</h1>
           <p className="lede">
-            Your reports are connected to a real backend and can be followed from the feed after submission.
+            {t('authCopy')}
           </p>
         </div>
         <AuthPanel />
@@ -613,6 +664,7 @@ function LoginPage() {
 
 function RaiseIssuePage() {
   const { isAuthenticated, user } = useAuthStore();
+  const { t, language } = useT();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const fileRef = useRef(null);
@@ -657,6 +709,7 @@ function RaiseIssuePage() {
       fd.append('lat', String(location.lat));
       fd.append('lng', String(location.lng));
       fd.append('source', voiceStep === 'review' ? 'VOICE' : 'TYPED');
+      fd.append('language_code', language);
       if (selectedWard) {
         fd.append('ward_id', selectedWard.id);
         fd.append('ward_name', selectedWard.name || '');
@@ -791,9 +844,10 @@ function RaiseIssuePage() {
     try {
       const fd = new FormData();
       fd.append('audio', blob, 'recording.webm');
+      fd.append('language', language);
       const { data: stt } = await api.post('/api/voice/transcribe', fd);
       setTranscript(stt.transcript || '');
-      const { data: nlp } = await api.post('/api/voice/extract', { transcript: stt.transcript });
+      const { data: nlp } = await api.post('/api/voice/extract', { transcript: stt.transcript, language_code: language });
       const { title, category, description } = nlp.extracted || {};
       setForm((state) => ({
         ...state,
@@ -820,35 +874,35 @@ function RaiseIssuePage() {
     <AppShell>
       <section className="raise-layout">
         <div className="raise-main">
-          <Link to="/" className="back-link"><ArrowLeft size={16} /> Back to feed</Link>
+          <Link to="/" className="back-link"><ArrowLeft size={16} /> {t('backToFeed')}</Link>
           <div className="section-heading">
-            <p className="eyebrow">New civic report</p>
-            <h1>Raise an issue from the web</h1>
+            <p className="eyebrow">{t('newReport')}</p>
+            <h1>{t('raiseWeb')}</h1>
           </div>
 
           {!isAuthenticated && (
             <div className="notice">
               <AlertTriangle size={18} />
-              <span>Sign in or create an account before submitting.</span>
+              <span>{t('signInBeforeSubmit')}</span>
             </div>
           )}
 
           <div className="voice-panel">
             <div>
-              <p className="eyebrow">Voice assist</p>
-              <strong>{voiceStep === 'processing' ? 'Processing audio' : voiceStep === 'recording' ? 'Listening now' : 'Speak or type your report'}</strong>
-              <span>Voice can fill the form, and it falls back to typing if transcription is unavailable.</span>
+              <p className="eyebrow">{t('voiceAssist')}</p>
+              <strong>{voiceStep === 'processing' ? t('processingAudio') : voiceStep === 'recording' ? t('listeningNow') : t('speakOrType')}</strong>
+              <span>{t('voiceCopy')}</span>
             </div>
             <div className="voice-actions">
               {recording ? (
                 <button className="button primary" type="button" onClick={stopRecording}>
                   <Square size={16} />
-                  Stop
+                  {t('stop')}
                 </button>
               ) : (
                 <button className="button secondary" type="button" onClick={startRecording} disabled={voiceStep === 'processing'}>
                   {voiceStep === 'processing' ? <Loader2 size={17} className="spin" /> : <Mic size={17} />}
-                  Voice
+                  {t('voice')}
                 </button>
               )}
               {(voiceMode || recording) && (
@@ -889,23 +943,23 @@ function RaiseIssuePage() {
             }}
           >
             <fieldset>
-              <legend>Category</legend>
+              <legend>{t('category')}</legend>
               <div className="category-grid">
-                {CATEGORIES.map(([value, label]) => (
+                {CATEGORIES.map(([value]) => (
                   <button
                     key={value}
                     type="button"
                     className={form.category === value ? 'active' : ''}
                     onClick={() => setForm((state) => ({ ...state, category: value }))}
                   >
-                    {label}
+                    {categoryLabel(language, value)}
                   </button>
                 ))}
               </div>
             </fieldset>
 
             <label>
-              Issue title
+              {t('issueTitle')}
               <input
                 required
                 maxLength={80}
@@ -916,7 +970,7 @@ function RaiseIssuePage() {
             </label>
 
             <label>
-              Description
+              {t('description')}
               <textarea
                 rows={5}
                 maxLength={500}
@@ -928,7 +982,7 @@ function RaiseIssuePage() {
 
             <div className="location-row">
               <label>
-                Location label
+                {t('locationLabel')}
                 <input
                   value={form.location_label}
                   onChange={(event) => setForm((state) => ({ ...state, location_label: event.target.value }))}
@@ -937,7 +991,7 @@ function RaiseIssuePage() {
               </label>
               <button className="button secondary location-button" type="button" onClick={getLocation} disabled={locating}>
                 {locating ? <Loader2 size={17} className="spin" /> : <LocateFixed size={17} />}
-                Use current
+                {t('useCurrent')}
               </button>
             </div>
 
@@ -965,7 +1019,7 @@ function RaiseIssuePage() {
             </div>
 
             <fieldset>
-              <legend>Ward mapping</legend>
+              <legend>{t('wardMapping')}</legend>
               {selectedWard && (
                 <div className="selected-ward">
                   <strong>Mapped to {selectedWard.name}</strong>
@@ -1001,7 +1055,7 @@ function RaiseIssuePage() {
             </fieldset>
 
             <fieldset>
-              <legend>Photos / video</legend>
+              <legend>{t('photosVideo')}</legend>
               <div className="media-uploader">
                 {media.map((item) => (
                   <div className="media-thumb" key={item.id}>
@@ -1031,12 +1085,12 @@ function RaiseIssuePage() {
                 checked={form.is_anonymous}
                 onChange={(event) => setForm((state) => ({ ...state, is_anonymous: event.target.checked }))}
               />
-              Submit anonymously in public feed
+              {t('submitAnon')}
             </label>
 
             <button className="button primary submit-button" type="submit" disabled={submitIssue.isPending}>
               {submitIssue.isPending ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
-              Submit issue
+              {t('submitIssue')}
             </button>
           </form>
         </div>
@@ -1045,8 +1099,8 @@ function RaiseIssuePage() {
           {isAuthenticated ? (
             <div className="side-panel">
               <ShieldCheck size={22} />
-              <h2>Ready to submit</h2>
-              <p>Your report will be stored in Supabase and appear in the public feed.</p>
+              <h2>{t('readySubmit')}</h2>
+              <p>{t('readyCopy')}</p>
             </div>
           ) : (
             <AuthPanel compact />
@@ -1058,6 +1112,7 @@ function RaiseIssuePage() {
 }
 
 function RepSummary({ title, rep }) {
+  const { t } = useT();
   return (
     <div className="rep-card">
       <span>{title}</span>
@@ -1068,8 +1123,8 @@ function RepSummary({ title, rep }) {
         </>
       ) : (
         <>
-          <strong>Not mapped yet</strong>
-          <small>Admin can import or update representative data.</small>
+          <strong>{t('notMapped')}</strong>
+          <small>{t('adminCanImport')}</small>
         </>
       )}
     </div>
@@ -1079,9 +1134,10 @@ function RepSummary({ title, rep }) {
 function IssueDetailPage() {
   const { id } = useParams();
   const navigate = useNavigate();
+  const { t, language } = useT();
 
   const { data, isLoading } = useQuery({
-    queryKey: ['issue', id],
+    queryKey: ['issue', id, language],
     queryFn: () => api.get(`/api/issues/${id}`).then((r) => r.data),
   });
 
@@ -1093,7 +1149,7 @@ function IssueDetailPage() {
       <section className="detail-page">
         <button className="back-link" type="button" onClick={() => navigate(-1)}>
           <ArrowLeft size={16} />
-          Back
+          {t('back')}
         </button>
 
         {isLoading ? (
@@ -1104,29 +1160,29 @@ function IssueDetailPage() {
           <div className="detail-stack">
             <article className="detail-card">
               <div className="issue-meta">
-                <span className="pill category">{CATEGORY_LABELS[issue.category] || 'Other'}</span>
-                <span className="pill status">{STATUS_LABELS[issue.status] || issue.status}</span>
+                <span className="pill category">{categoryLabel(language, issue.category)}</span>
+                <span className="pill status">{statusLabel(language, issue.status)}</span>
               </div>
               <h1>{issue.title}</h1>
-              <p>{issue.description || 'No description added yet.'}</p>
+              <p>{issue.description || t('noDescription')}</p>
               <div className="detail-grid">
                 <span><MapPin size={17} /> {issue.wards?.name || issue.location_label || issue.city || 'Mumbai'}</span>
-                <span><ThumbsUp size={17} /> {issue.upvote_count || 0} upvotes</span>
+                <span><ThumbsUp size={17} /> {issue.upvote_count || 0} {t('upvotes')}</span>
                 <span><Clock3 size={17} /> {formatDistanceToNow(new Date(issue.created_at), { addSuffix: true })}</span>
               </div>
             </article>
 
             <section className="detail-card">
-              <h2>Mapped representatives</h2>
+              <h2>{t('mappedReps')}</h2>
               <div className="rep-grid">
-                <RepSummary title="Corporator" rep={issue.corporators} />
-                <RepSummary title="MLA" rep={issue.mlas} />
-                <RepSummary title="MP" rep={issue.mps} />
+                <RepSummary title={t('corporator')} rep={issue.corporators} />
+                <RepSummary title={t('mla')} rep={issue.mlas} />
+                <RepSummary title={t('mp')} rep={issue.mps} />
               </div>
             </section>
 
             <section className="detail-card">
-              <h2>Timeline</h2>
+              <h2>{t('timeline')}</h2>
               <div className="timeline-list">
                 {timeline.length ? timeline.map((item) => (
                   <div className="timeline-item" key={`${item.action}-${item.created_at}`}>
@@ -1151,6 +1207,7 @@ function IssueDetailPage() {
 
 function ProfileSettingsPage() {
   const { isAuthenticated, user, updateUser, logout } = useAuthStore();
+  const { t, language } = useT();
   const navigate = useNavigate();
   const avatarInputRef = useRef(null);
   const [name, setName] = useState(user?.name || '');
@@ -1176,12 +1233,13 @@ function ProfileSettingsPage() {
         name,
         phone,
         home_ward_id: selectedWardId || null,
+        preferred_language: language,
       });
       return data;
     },
     onSuccess: (data) => {
       updateUser(data.user);
-      toast.success('Profile saved');
+      toast.success(t('profileSaved'));
     },
     onError: (error) => toast.error(error.response?.data?.error || 'Profile update failed'),
   });
@@ -1231,7 +1289,7 @@ function ProfileSettingsPage() {
         <section className="auth-page">
           <div>
             <p className="eyebrow">Citizen profile</p>
-            <h1>Sign in to manage your ward and profile</h1>
+            <h1>{t('citizenProfile')}</h1>
             <p className="lede">Your home ward helps CivicPulse map reports to the right corporator and MLA.</p>
           </div>
           <AuthPanel redirectTo="/profile" />
@@ -1243,14 +1301,14 @@ function ProfileSettingsPage() {
   return (
     <AppShell>
       <section className="profile-layout">
-        <Link to="/" className="back-link"><ArrowLeft size={16} /> Back to feed</Link>
+        <Link to="/" className="back-link"><ArrowLeft size={16} /> {t('backToFeed')}</Link>
 
         <div className="profile-card profile-hero">
           <button className="avatar-preview" type="button" onClick={() => avatarInputRef.current?.click()}>
             {avatarPreview ? <img src={avatarPreview} alt="" /> : <span>{user?.name?.charAt(0) || 'C'}</span>}
           </button>
           <div>
-            <p className="eyebrow">Citizen profile</p>
+            <p className="eyebrow">{t('citizenProfile')}</p>
             <h1>{user?.name || 'Citizen'}</h1>
             <p className="lede">{user?.email || user?.phone || 'CivicPulse account'}</p>
             <div className="profile-actions">
@@ -1277,23 +1335,25 @@ function ProfileSettingsPage() {
         >
           <div className="section-heading">
             <div>
-              <p className="eyebrow">Account details</p>
-              <h2>Profile and home ward</h2>
+              <p className="eyebrow">{t('accountDetails')}</p>
+              <h2>{t('profileTitle')}</h2>
             </div>
           </div>
 
           <label>
-            Name
+            {t('name')}
             <input value={name} onChange={(event) => setName(event.target.value)} placeholder="Your full name" />
           </label>
 
           <label>
-            Phone
+            {t('phone')}
             <input value={phone} onChange={(event) => setPhone(event.target.value)} placeholder="Mobile number" />
           </label>
 
+          <LanguageSelect label className="profile-language" />
+
           <fieldset>
-            <legend>Home ward</legend>
+            <legend>{t('homeWard')}</legend>
             {selectedWard && (
               <div className="selected-ward">
                 <strong>{selectedWard.name}</strong>
@@ -1326,11 +1386,11 @@ function ProfileSettingsPage() {
           <div className="profile-footer-actions">
             <button className="button primary submit-button" type="submit" disabled={saveProfile.isPending}>
               {saveProfile.isPending ? <Loader2 size={18} className="spin" /> : <ShieldCheck size={18} />}
-              Save profile
+              {t('saveProfile')}
             </button>
             <button className="button secondary danger-button" type="button" onClick={() => { logout(); navigate('/'); }}>
               <LogOut size={17} />
-              Sign out
+              {t('signOut')}
             </button>
           </div>
         </form>
@@ -1346,6 +1406,7 @@ MH,Maharashtra,Mumbai,K-West,K-West,Andheri West,Andheri Corporator,Party,+91555
 
 function AdminImportPage() {
   const { isAuthenticated, user } = useAuthStore();
+  const { t } = useT();
   const [importText, setImportText] = useState(SAMPLE_REP_CSV);
   const [sourceUrl, setSourceUrl] = useState('');
   const queryClient = useQueryClient();
@@ -1398,7 +1459,7 @@ function AdminImportPage() {
         <section className="auth-page">
           <div>
             <p className="eyebrow">Admin access</p>
-            <h1>Sign in as admin to upload representative data</h1>
+            <h1>{t('adminAccess')}</h1>
             <p className="lede">The import updates state-city-ward records, maps corporators to wards, and maps MLAs through zones.</p>
           </div>
           <AuthPanel redirectTo="/admin" />
@@ -1428,8 +1489,8 @@ function AdminImportPage() {
       <section className="admin-layout">
         <div className="section-heading">
           <p className="eyebrow">Backend data control</p>
-          <h1>Upload corporator and MLA mapping</h1>
-          <p className="lede">Store data as state → city → ward, assign corporators per ward, and attach MLAs to zones for feed mapping.</p>
+          <h1>{t('adminTitle')}</h1>
+          <p className="lede">{t('adminCopy')}</p>
         </div>
 
         <div className="admin-grid">
@@ -1442,7 +1503,7 @@ function AdminImportPage() {
           >
             <div className="panel-title">
               <Upload size={19} />
-              <h2>Manual import</h2>
+              <h2>{t('manualImport')}</h2>
             </div>
 
             <div className="template-tools">
@@ -1452,11 +1513,11 @@ function AdminImportPage() {
                 download="civicpulse-representative-import-template.csv"
               >
                 <Download size={17} />
-                Download sample CSV
+                {t('downloadSample')}
               </a>
               <button className="button secondary" type="button" onClick={() => setImportText(SAMPLE_REP_CSV)}>
                 <FileText size={17} />
-                Load sample rows
+                {t('loadSample')}
               </button>
             </div>
             <p className="template-help">
@@ -1481,14 +1542,14 @@ function AdminImportPage() {
 
             <button className="button primary submit-button" type="submit" disabled={uploadImport.isPending}>
               {uploadImport.isPending ? <Loader2 size={18} className="spin" /> : <Database size={18} />}
-              Import and map data
+              {t('importData')}
             </button>
           </form>
 
           <aside className="admin-panel">
             <div className="panel-title">
               <Database size={19} />
-              <h2>Current mapping</h2>
+              <h2>{t('currentMapping')}</h2>
             </div>
             <div className="mapping-stats">
               <span><strong>{wards.length}</strong><small>wards loaded</small></span>
@@ -1510,7 +1571,7 @@ function AdminImportPage() {
         <section className="admin-panel">
           <div className="panel-title">
             <Clock3 size={19} />
-            <h2>Recent imports</h2>
+            <h2>{t('recentImports')}</h2>
           </div>
           <div className="import-history">
             {latestImports.map((batch) => (

@@ -63,6 +63,7 @@ CREATE TABLE users (
   avatar_url       TEXT,
   role             user_role NOT NULL DEFAULT 'CITIZEN',
   home_ward_id     UUID REFERENCES wards(id),
+  preferred_language TEXT NOT NULL DEFAULT 'en' CHECK (preferred_language IN ('en','hi','mr','gu','bn','ta','te','kn','ml','pa')),
   is_active        BOOLEAN DEFAULT TRUE,
   is_phone_verified BOOLEAN DEFAULT FALSE,
   fcm_token        TEXT,
@@ -193,6 +194,7 @@ CREATE TABLE issues (
   resolved_by_role      TEXT,
   is_anonymous          BOOLEAN DEFAULT FALSE,
   source                TEXT DEFAULT 'TYPED',
+  original_language     TEXT NOT NULL DEFAULT 'en' CHECK (original_language IN ('en','hi','mr','gu','bn','ta','te','kn','ml','pa')),
   upvote_count          INTEGER DEFAULT 0,
   comment_count         INTEGER DEFAULT 0,
   share_count           INTEGER DEFAULT 0,
@@ -211,6 +213,24 @@ CREATE INDEX idx_issues_trending ON issues(trending_score DESC) WHERE status != 
 CREATE INDEX idx_issues_location ON issues USING GIST(location);
 CREATE INDEX idx_issues_created  ON issues(created_at DESC);
 CREATE INDEX idx_issues_hierarchy ON issues(state_code, city, ward_number);
+
+-- ─── ISSUE TRANSLATIONS ──────────────────────────────────────
+CREATE TABLE issue_translations (
+  id              UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  issue_id        UUID NOT NULL REFERENCES issues(id) ON DELETE CASCADE,
+  language_code   TEXT NOT NULL CHECK (language_code IN ('en','hi','mr','gu','bn','ta','te','kn','ml','pa')),
+  source_language TEXT NOT NULL DEFAULT 'en' CHECK (source_language IN ('en','hi','mr','gu','bn','ta','te','kn','ml','pa')),
+  title           TEXT NOT NULL,
+  description     TEXT,
+  location_label  TEXT,
+  provider        TEXT DEFAULT 'openai',
+  translated_at   TIMESTAMPTZ DEFAULT NOW(),
+  created_at      TIMESTAMPTZ DEFAULT NOW(),
+  updated_at      TIMESTAMPTZ DEFAULT NOW(),
+  UNIQUE(issue_id, language_code)
+);
+
+CREATE INDEX idx_issue_translations_issue_language ON issue_translations(issue_id, language_code);
 
 -- ─── ISSUE MEDIA ──────────────────────────────────────────────
 CREATE TABLE issue_media (

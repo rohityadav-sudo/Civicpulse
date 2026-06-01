@@ -3,6 +3,7 @@ const router = express.Router();
 const multer = require('multer');
 const { authenticate } = require('../middleware/auth');
 const OpenAI = require('openai');
+const { getLanguageMeta, normalizeLanguage } = require('../services/languageService');
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
 let openaiClient;
@@ -32,7 +33,8 @@ router.post('/transcribe', authenticate, upload.single('audio'), async (req, res
       model: 'whisper-1',
       response_format: 'verbose_json'
     };
-    if (req.body.language) transcriptionRequest.language = req.body.language;
+    const requestedLanguage = normalizeLanguage(req.body.language || req.body.language_code || req.user?.preferred_language);
+    if (requestedLanguage) transcriptionRequest.language = getLanguageMeta(requestedLanguage).whisperCode;
 
     const transcription = await openai.audio.transcriptions.create(transcriptionRequest);
 
@@ -60,11 +62,13 @@ router.post('/extract', authenticate, async (req, res) => {
     if (!transcript) return res.status(400).json({ error: 'Transcript required' });
 
     const openai = getOpenAIClient();
+    const requestedLanguage = getLanguageMeta(req.body.language_code || req.body.language || req.user?.preferred_language);
     const completion = await openai.chat.completions.create({
       model: 'gpt-4o-mini',
       messages: [{
         role: 'system',
         content: `You are a civic issue parser for Mumbai, India. Extract structured data from a citizen's spoken complaint.
+Write the extracted title and description in ${requestedLanguage.name}.
 Always respond with ONLY valid JSON — no markdown, no explanation.
 Categories: POTHOLE, GARBAGE, WATER, STREETLIGHT, SAFETY, TREE, OTHER
 Urgency: LOW, MEDIUM, HIGH`

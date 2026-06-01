@@ -2,10 +2,12 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView, StyleSheet, Alert, Image, Platform
 } from 'react-native';
-import { useQuery } from '@tanstack/react-query';
+import { useQuery, useQueryClient } from '@tanstack/react-query';
 import * as ImagePicker from 'expo-image-picker';
 import api, { postMultipart } from '../utils/api';
 import { useAuthStore } from '../store/authStore';
+import LanguagePicker from '../components/LanguagePicker';
+import { useT } from '../utils/i18n';
 import { colors } from '../utils/theme';
 
 const createUploadFormData = () => (
@@ -14,6 +16,8 @@ const createUploadFormData = () => (
 
 export default function ProfileScreen() {
   const { user, logout, updateUser } = useAuthStore();
+  const { t, language } = useT();
+  const queryClient = useQueryClient();
   const [name, setName] = useState(user?.name || '');
   const [phone, setPhone] = useState(user?.phone || '');
   const [wardSearch, setWardSearch] = useState('');
@@ -52,13 +56,25 @@ export default function ProfileScreen() {
         name,
         phone,
         home_ward_id: selectedWardId || null,
+        preferred_language: language,
       });
       await updateUser(response.user);
-      Alert.alert('Saved', 'Profile updated successfully.');
+      queryClient.invalidateQueries();
+      Alert.alert(t('saved'), t('profileUpdated'));
     } catch (err) {
-      Alert.alert('Error', err.response?.data?.error || 'Profile update failed');
+      Alert.alert(t('error'), err.response?.data?.error || t('profileUpdateFailed'));
     } finally {
       setSaving(false);
+    }
+  };
+
+  const saveLanguagePreference = async (preferred_language) => {
+    try {
+      const { data: response } = await api.put('/api/auth/me', { preferred_language });
+      await updateUser(response.user);
+      queryClient.invalidateQueries();
+    } catch (err) {
+      Alert.alert(t('error'), err.response?.data?.error || t('profileUpdateFailed'));
     }
   };
 
@@ -143,11 +159,11 @@ export default function ProfileScreen() {
           <Text style={styles.subtitle}>{user?.email || user?.phone || 'CivicPulse account'}</Text>
           <View style={styles.avatarActions}>
             <TouchableOpacity onPress={pickAvatar} disabled={uploadingAvatar}>
-              <Text style={styles.avatarActionText}>{uploadingAvatar ? 'Uploading…' : 'Change photo'}</Text>
+          <Text style={styles.avatarActionText}>{uploadingAvatar ? 'Uploading…' : t('changePhoto')}</Text>
             </TouchableOpacity>
             {!!avatarPreview && (
               <TouchableOpacity onPress={removeAvatar} disabled={uploadingAvatar}>
-                <Text style={[styles.avatarActionText, { color: colors.red2 }]}>Remove</Text>
+                <Text style={[styles.avatarActionText, { color: colors.red2 }]}>{t('remove')}</Text>
               </TouchableOpacity>
             )}
           </View>
@@ -155,15 +171,16 @@ export default function ProfileScreen() {
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Profile</Text>
-        <Text style={styles.label}>Name</Text>
+        <Text style={styles.sectionTitle}>{t('profile')}</Text>
+        <LanguagePicker onChange={saveLanguagePreference} />
+        <Text style={styles.label}>{t('name')}</Text>
         <TextInput style={styles.input} value={name} onChangeText={setName} placeholder="Your name" placeholderTextColor={colors.text3} />
-        <Text style={styles.label}>Phone</Text>
+        <Text style={styles.label}>{t('phone')}</Text>
         <TextInput style={styles.input} value={phone} onChangeText={setPhone} keyboardType="phone-pad" placeholder="Optional phone number" placeholderTextColor={colors.text3} />
       </View>
 
       <View style={styles.card}>
-        <Text style={styles.sectionTitle}>Home ward</Text>
+        <Text style={styles.sectionTitle}>{t('homeWard')}</Text>
         <Text style={styles.helper}>Set your ward so your feed and reports can be mapped to the right corporator and MLA.</Text>
         {!!selectedWard && (
           <View style={styles.selectedWard}>
@@ -179,7 +196,7 @@ export default function ProfileScreen() {
           placeholderTextColor={colors.text3}
         />
         <View style={styles.wardList}>
-          {locationsLoading && <Text style={styles.helper}>Loading wards…</Text>}
+          {locationsLoading && <Text style={styles.helper}>{t('loadingWards')}</Text>}
           {!locationsLoading && locationsError && <Text style={styles.helper}>Could not load wards. Please try again later.</Text>}
           {!locationsLoading && !locationsError && filteredWards.map((ward) => (
             <TouchableOpacity
@@ -193,16 +210,16 @@ export default function ProfileScreen() {
               </Text>
             </TouchableOpacity>
           ))}
-          {!locationsLoading && !locationsError && !filteredWards.length && <Text style={styles.helper}>No wards found. Admin can import more state-city-ward data from web admin.</Text>}
+          {!locationsLoading && !locationsError && !filteredWards.length && <Text style={styles.helper}>{t('noWards')}</Text>}
         </View>
       </View>
 
       <TouchableOpacity style={[styles.saveButton, saving && { opacity: 0.7 }]} onPress={saveProfile} disabled={saving}>
-        <Text style={styles.saveText}>{saving ? 'Saving…' : 'Save profile'}</Text>
+        <Text style={styles.saveText}>{saving ? 'Saving…' : t('saveProfile')}</Text>
       </TouchableOpacity>
 
       <TouchableOpacity style={styles.logoutButton} onPress={doLogout}>
-        <Text style={styles.logoutText}>Sign out</Text>
+        <Text style={styles.logoutText}>{t('signOut')}</Text>
       </TouchableOpacity>
 
     </ScrollView>
