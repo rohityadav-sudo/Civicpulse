@@ -1,6 +1,8 @@
 node_modules/
 .expo/
 .eas/
+.idea/
+builds/
 dist/
 web-build/
 android/
