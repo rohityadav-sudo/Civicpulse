@@ -81,7 +81,12 @@ export default function HomeScreen({ navigation }) {
       </View>
 
       {/* Filters */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.filterRow}>
+      <ScrollView
+        horizontal
+        showsHorizontalScrollIndicator={false}
+        style={styles.filterScroller}
+        contentContainerStyle={styles.filterRow}
+      >
         {FILTERS.map(f => (
           <TouchableOpacity key={f} onPress={() => setFilter(f)}
             style={[styles.chip, filter === f && styles.chipActive]}>
@@ -129,8 +134,9 @@ const styles = StyleSheet.create({
   searchBar:   { flexDirection: 'row', alignItems: 'center', gap: 8, margin: 0, marginHorizontal: 18, marginBottom: 14, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10 },
   searchInput: { flex: 1, color: colors.text, fontSize: 13 },
   micBtn:      { width: 28, height: 28, backgroundColor: colors.accent, borderRadius: 8, alignItems: 'center', justifyContent: 'center' },
-  filterRow:   { flexDirection: 'row', gap: 8, paddingHorizontal: 18, paddingBottom: 2, marginBottom: 14 },
-  chip:        { paddingHorizontal: 14, paddingVertical: 6, borderRadius: 100, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border },
+  filterScroller: { flexGrow: 0, flexShrink: 0, height: 42, maxHeight: 42, marginBottom: 14 },
+  filterRow:   { flexDirection: 'row', alignItems: 'center', gap: 8, paddingHorizontal: 18 },
+  chip:        { height: 34, paddingHorizontal: 14, borderRadius: 100, backgroundColor: colors.surface2, borderWidth: 1, borderColor: colors.border, alignItems: 'center', justifyContent: 'center' },
   chipActive:  { backgroundColor: colors.accent, borderColor: colors.accent },
   chipTxt:     { fontSize: 12, fontWeight: '500', color: colors.text2 },
   chipTxtActive:{ color: '#fff' },
